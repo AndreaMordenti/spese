@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Sora:wght@500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif&display=swap">
+<script>try { if (localStorage.getItem('spese.lock')) document.documentElement.classList.add('locked'); } catch (e) {}</script>
 <style>
   :root {
     --bg: #0D0E12; --surface: #171920; --surface-2: #1F222B; --surface-3: #2A2E39;
@@ -113,10 +114,10 @@
 
   /* Nav */
   nav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--sab)); padding: 10px 12px var(--sab); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); border-top: 1px solid var(--line); display: flex; justify-content: space-around; align-items: flex-start; z-index: 10; }
-  nav a { width: 64px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 11px; font-weight: 700; }
+  nav a { flex: 1; max-width: 80px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 11px; font-weight: 700; }
   nav a.on { color: var(--text); }
   nav a svg { width: 24px; height: 24px; }
-  nav a.fab { width: 60px; height: 60px; margin-top: -30px; border-radius: 20px; background: var(--accent); color: var(--on-accent); box-shadow: var(--fab-shadow); }
+  nav a.fab { flex: 0 0 60px; max-width: none; width: 60px; height: 60px; margin-top: -30px; border-radius: 20px; background: var(--accent); color: var(--on-accent); box-shadow: var(--fab-shadow); }
   nav a.fab svg { width: 28px; height: 28px; }
   :root[data-theme="minimal"] nav a.fab { background: var(--text); color: var(--bg); border-radius: 30px; margin-top: -26px; }
   :root[data-theme="minimal"] nav a svg:not(.fab svg) { display: none; }
@@ -230,6 +231,13 @@
   table.preview td, table.preview th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
   .scroll-x { overflow-x: auto; }
   .hidden { display: none !important; }
+  html.locked #app, html.locked nav { visibility: hidden; }
+  #lock { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: calc(var(--sat) + 20px) 24px calc(var(--sab) + 20px); overflow-y: auto; }
+  .lock-dots { display: flex; gap: 16px; height: 16px; }
+  .lock-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); }
+  .lock-dots span.on { background: var(--accent); border-color: var(--accent); }
+  .lock-dots.shake { animation: shake .35s; }
+  @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 </style>
 </head>
 <body>
@@ -237,6 +245,7 @@
 <nav id="nav"></nav>
 <div class="sheet-bg" id="sheet-bg"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
+<div id="lock" class="hidden"></div>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="app.js" defer></script>

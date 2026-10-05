@@ -54,6 +54,11 @@ const I = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  sliders: '<path d="M4 7h9"/><path d="M17 7h3"/><circle cx="15" cy="7" r="2"/><path d="M4 17h3"/><path d="M11 17h9"/><circle cx="9" cy="17" r="2"/>',
+  up: '<path d="m6 15 6-6 6 6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  finger: '<path d="M5 12a7 7 0 0 1 14 0v1"/><path d="M8 13v-1a4 4 0 0 1 8 0v2a10 10 0 0 1-1.5 5"/><path d="M12 12v3a14 14 0 0 1-1.5 4.5"/><path d="M5 15.5c0 1.5.3 2.8.8 4"/>',
   cloud: '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z"/>',
 };
 const svg = (name, size = 20, w = 2.2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[name] || I.tag}</svg>`;
@@ -87,7 +92,7 @@ function load() {
     habits: s.habits || [],
     habitLogs: s.habitLogs || [],
     accounts: s.accounts || [...DEFAULT_ACCOUNTS],
-    settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '' }, s.settings || {}),
+    settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null }, s.settings || {}),
     meta: s.meta || { driveFileId: null, lastSync: null },
   };
 }
@@ -128,8 +133,8 @@ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ap
 // ---------- Routing ----------
 const ROUTES = ['home', 'analisi', 'aggiungi', 'diario', 'scan', 'impostazioni', 'importa', 'spese'];
 function route() {
-  const h = (location.hash || '#home').slice(1).split('/');
-  const name = ROUTES.includes(h[0]) ? h[0] : 'home';
+  const h = (location.hash || '#analisi').slice(1).split('/');
+  const name = ROUTES.includes(h[0]) ? h[0] : 'analisi';
   if (name !== 'aggiungi') draft = null;
   render(name, h.slice(1));
   window.scrollTo(0, 0);
@@ -147,7 +152,7 @@ function render(name, args) {
   if (views[name].after) views[name].after(args);
 }
 function renderNav(active) {
-  const items = [['home', 'Spese', 'home'], ['analisi', 'Analisi', 'chart'], ['aggiungi', '', 'plus'], ['diario', 'Diario', 'diary'], ['scan', 'Scan', 'scan']];
+  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['diario', 'Diario', 'diary'], ['impostazioni', 'Impostazioni', 'gear']];
   $('#nav').innerHTML = items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}</a>`
     : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('');
@@ -191,7 +196,6 @@ function viewHome() {
       </button>
       <div class="row" style="gap:10px">
         <span class="sync-dot ${Drive.state}" id="sync-dot" title="Stato sincronizzazione"></span>
-        <button class="chip" onclick="go('#impostazioni')" aria-label="Impostazioni">${svg('gear', 18)}</button>
       </div>
     </div>
     <div class="row between">
@@ -284,7 +288,7 @@ function viewAggiungi(args) {
     <div class="row between">
       <button class="chip" onclick="draft=null;history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button>
       <span style="font-weight:800">${draft.id ? 'Modifica' : 'Nuovo movimento'}</span>
-      <button class="chip" style="color:var(--accent)" onclick="go('#scan')" aria-label="Scansiona scontrino">${svg('scan', 18)}</button>
+      <button class="chip" style="color:var(--accent)" onclick="go('#scan')" aria-label="Scansiona scontrino">${svg('scan', 18)} Scansiona</button>
     </div>
     <div class="segmented" style="align-self:center"><button class="${draft.type === 'expense' ? 'on' : ''}" onclick="setDraftType('expense')">Spesa</button><button class="${draft.type === 'income' ? 'on' : ''}" onclick="setDraftType('income')">Entrata</button></div>
     <div class="col" style="align-items:center;gap:6px">
@@ -335,55 +339,135 @@ function deleteExpense(id) {
 }
 
 // ---------- Analisi ----------
-let anaMode = 'mese';
-function viewAnalisi() {
+let anaMode = 'mese', anaEdit = false;
+const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
+const WEEKDAYS = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica'];
+const chevR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>';
+function anaCtx() {
   const isMonth = anaMode === 'mese', year = currentMonth.slice(0, 4);
   const inPeriod = e => (isMonth ? monthKey(e.date) === currentMonth : e.date.startsWith(year));
   const list = live(S.expenses).filter(e => typeOf(e) === 'expense' && !catById(e.cat).excluded && inPeriod(e));
   const income = sumBy(live(S.expenses).filter(e => typeOf(e) === 'income' && inPeriod(e)));
-  const total = sumBy(list), cs = byCategory(list), shown = topWithRest(cs);
-  const C = 2 * Math.PI * 70; let acc = 0;
-  const donut = shown.map(c => { const len = C * c.total / (total || 1); const el = `<circle cx="100" cy="100" r="70" fill="none" stroke="${c.cat.color}" stroke-width="26" stroke-dasharray="${Math.max(0, len - 3)} ${C}" transform="rotate(${-90 + 360 * acc / (total || 1)} 100 100)"/>`; acc += c.total; return el; }).join('');
-  const months = []; for (let i = 5; i >= 0; i--) { const [y, m] = currentMonth.split('-').map(Number); const d = new Date(y, m - 1 - i, 1); const k = localISO(d).slice(0, 7); months.push({ k, label: d.toLocaleDateString('it-IT', { month: 'short' }), spent: sumBy(monthExpenses(k)), income: sumBy(monthIncome(k)) }); }
-  const max = Math.max(...months.map(m => m.spent), 1), avg = months.reduce((a, m) => a + m.spent, 0) / 6;
-  const budgets = cats('expense').filter(c => c.budget > 0 && !c.excluded).map(c => ({ c, spent: sumBy(monthExpenses(currentMonth).filter(e => e.cat === c.id)) })).sort((a, b) => b.spent / b.c.budget - a.spent / a.c.budget);
+  const cs = byCategory(list), [y, m] = currentMonth.split('-').map(Number);
+  const start = isMonth ? currentMonth + '-01' : year + '-01-01', end = isMonth ? localISO(new Date(y, m, 0)) : year + '-12-31', today = todayISO();
+  const cur = today >= start && today <= end;
+  return { isMonth, year, inPeriod, list, income, cs, total: sumBy(list), shown: topWithRest(cs), label: isMonth ? monthLabel(currentMonth).split(' ')[0] : year,
+    p: { start, end, cur, totalDays: daysBetween(start, end) + 1, elapsed: (cur ? daysBetween(start, today) : daysBetween(start, end)) + 1 } };
+}
+const ANA_DEFAULT = ['donut', 'cashflow', 'trend', 'budget', 'categorie'];
+const ANA_WIDGETS = {
+  donut: { title: 'Ripartizione per categoria', desc: 'Il grafico a ciambella con le percentuali.', icon: 'chart', render(c) {
+    const C = 2 * Math.PI * 70; let acc = 0;
+    const donut = c.shown.map(x => { const len = C * x.total / (c.total || 1); const el = `<circle cx="100" cy="100" r="70" fill="none" stroke="${x.cat.color}" stroke-width="26" stroke-dasharray="${Math.max(0, len - 3)} ${C}" transform="rotate(${-90 + 360 * acc / (c.total || 1)} 100 100)"/>`; acc += x.total; return el; }).join('');
+    return `<div class="card row" style="gap:18px">
+      <div class="donut-wrap">
+        <svg width="136" height="136" viewBox="0 0 200 200" aria-label="Ripartizione per categoria"><circle cx="100" cy="100" r="70" fill="none" stroke="var(--surface-2)" stroke-width="26"/>${donut}</svg>
+        <div class="donut-center"><span class="small muted">${c.label}</span><span class="num" style="font-size:17px;font-weight:700">${fmtMoney(c.total)}</span></div>
+      </div>
+      <div class="legend">${c.cs.length ? c.shown.map(x => `<div class="row"><span class="dot" style="background:${x.cat.color}"></span><span class="grow truncate" style="font-weight:700">${esc(x.cat.name)}</span><span class="muted small">${Math.round(x.total / c.total * 100)}%</span></div>`).join('') : '<span class="muted small">Nessuna spesa nel periodo</span>'}</div>
+    </div>`; } },
+  cashflow: { title: 'Entrate e spese', desc: 'Quanto entra, quanto esce e la differenza.', icon: 'cart', render(c) { return `
+    <div class="card col" style="gap:14px">
+      <div class="row between"><span style="font-weight:800">Entrate e spese</span><span class="small muted">${c.label}</span></div>
+      <div class="row between"><div class="stat"><span class="v num" style="color:var(--accent)">+ ${fmtMoney(c.income)}</span><span class="small muted">entrate</span></div><div class="stat" style="text-align:right"><span class="v num">- ${fmtMoney(c.total)}</span><span class="small muted">spese</span></div></div>
+      <div class="row between small" style="border-top:1px solid var(--line);padding-top:12px"><span class="muted">Differenza</span><span class="num" style="font-weight:700;color:${c.income - c.total >= 0 ? 'var(--accent)' : 'var(--warn)'}">${c.income - c.total >= 0 ? '+' : '-'} ${fmtMoney(c.income - c.total)}</span></div>
+    </div>`; } },
+  trend: { title: 'Ultimi 6 mesi', desc: 'Andamento mensile di spese ed entrate.', icon: 'chart', render() {
+    const months = []; for (let i = 5; i >= 0; i--) { const [y, m] = currentMonth.split('-').map(Number); const d = new Date(y, m - 1 - i, 1); const k = localISO(d).slice(0, 7); months.push({ k, label: d.toLocaleDateString('it-IT', { month: 'short' }), spent: sumBy(monthExpenses(k)), income: sumBy(monthIncome(k)) }); }
+    const max = Math.max(...months.map(m => m.spent), 1), avg = months.reduce((a, m) => a + m.spent, 0) / 6;
+    return `<div class="card col" style="gap:16px">
+      <div class="row between"><span style="font-weight:800">Ultimi 6 mesi</span><span class="small muted">Media ${fmtMoney(avg)}</span></div>
+      <div class="bars">${months.map(m => `<div><div class="b ${m.k === currentMonth ? 'on' : ''}" style="height:${Math.round(m.spent / max * 100)}%" title="${fmtMoney(m.spent)}"></div><span class="small ${m.k === currentMonth ? '' : 'muted'}">${m.label}</span></div>`).join('')}</div>
+      <div class="col" style="gap:8px;border-top:1px solid var(--line);padding-top:12px">${months.map(m => `<div class="row between small"><span class="muted" style="width:44px">${m.label}</span><span class="num" style="color:var(--accent)">+ ${fmtMoney(m.income, false)}</span><span class="num">- ${fmtMoney(m.spent, false)}</span></div>`).join('')}</div>
+    </div>`; } },
+  budget: { title: 'Budget del mese', desc: 'Quanto resta per ogni categoria con budget (solo vista Mese).', icon: 'tag', render(c) {
+    if (!c.isMonth) return '';
+    const budgets = cats('expense').filter(x => x.budget > 0 && !x.excluded).map(x => ({ c: x, spent: sumBy(c.list.filter(e => e.cat === x.id)) })).sort((a, b) => b.spent / b.c.budget - a.spent / a.c.budget);
+    return `<div class="col" style="gap:12px">
+      <div class="row between"><span class="section-title">Budget del mese</span><button class="chip" style="color:var(--accent);height:32px" onclick="go('#impostazioni')">Modifica</button></div>
+      <div class="list">${budgets.map(({ c: x, spent }) => { const p = Math.round(spent / x.budget * 100); return `<div class="item" style="flex-direction:column;align-items:stretch;gap:10px">
+        <div class="row between" style="font-weight:700"><span>${esc(x.name)}</span><span style="color:${p > 100 ? 'var(--warn)' : 'var(--muted)'}">${p > 100 ? '+ ' + fmtMoney(spent - x.budget) + ' oltre' : fmtMoney(x.budget - spent) + ' rimasti'}</span></div>
+        <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : x.color}"></div></div></div>`; }).join('') || '<div class="empty">Nessun budget impostato. Aprilo da Impostazioni, Categorie.</div>'}</div>
+    </div>`; } },
+  categorie: { title: 'Per categoria', desc: 'Elenco delle categorie con importo e numero di movimenti.', icon: 'tag', render(c) { return `
+    <div class="col" style="gap:12px">
+      <span class="section-title">Per categoria</span>
+      <div class="list">${c.cs.map(x => `<div class="item"><div class="tile" style="background:${hexA(x.cat.color, .16)};color:${x.cat.color}">${svg(x.cat.icon)}</div><div class="col grow"><span style="font-weight:700">${esc(x.cat.name)}</span><span class="small muted">${c.list.filter(e => e.cat === x.cat.id).length} movimenti</span></div><span class="num" style="font-weight:600">${fmtMoney(x.total)}</span></div>`).join('') || '<div class="empty">Nessuna spesa nel periodo.</div>'}</div>
+    </div>`; } },
+  // ----- Nuovi widget (disattivati finché non li aggiungi)
+  forecast: { title: 'Proiezione di spesa', desc: 'Dove arrivi a fine periodo al ritmo attuale e quanto puoi spendere al giorno.', icon: 'clock', render(c) {
+    const p = c.p, avg = c.total / p.elapsed, proj = avg * p.totalDays, budget = totalBudget() * (c.isMonth ? 1 : 12), left = p.totalDays - p.elapsed;
+    const perDay = c.isMonth && p.cur && budget > c.total && left > 0 ? (budget - c.total) / left : 0;
+    return `<div class="card col" style="gap:14px">
+      <div class="row between"><span style="font-weight:800">${p.cur ? 'Proiezione di spesa' : 'Spesa media'}</span><span class="small muted">${c.label}</span></div>
+      ${p.cur ? `<div class="col" style="gap:4px"><span class="small muted">A fine ${c.isMonth ? 'mese' : 'anno'} arrivi a circa</span><span class="num" style="font-size:30px;font-weight:700;color:${budget && proj > budget ? 'var(--warn)' : 'inherit'}">${fmtMoney(proj)}</span>${budget ? `<span class="small muted">${proj > budget ? fmtMoney(proj - budget) + ' sopra il budget di ' + fmtMoney(budget) : fmtMoney(budget - proj) + ' sotto il budget di ' + fmtMoney(budget)}</span>` : ''}</div>` : ''}
+      <div class="bar"><div style="width:${Math.round(p.elapsed / p.totalDays * 100)}%;background:var(--accent)"></div></div>
+      <div class="row between"><div class="stat"><span class="v num">${fmtMoney(avg)}</span><span class="small muted">al giorno</span></div>${perDay ? `<div class="stat" style="text-align:right"><span class="v num" style="color:var(--accent)">${fmtMoney(perDay)}</span><span class="small muted">disponibili al giorno</span></div>` : ''}</div>
+    </div>`; } },
+  top: { title: 'Spese più grandi', desc: 'Le cinque spese singole più alte del periodo.', icon: 'gift', render(c) {
+    const top = c.list.slice().sort((a, b) => b.amount - a.amount).slice(0, 5);
+    return `<div class="col" style="gap:12px"><span class="section-title">Spese più grandi</span>${top.length ? `<div class="list">${top.map(expenseRow).join('')}</div>` : '<div class="empty">Nessuna spesa nel periodo.</div>'}</div>`; } },
+  weekday: { title: 'Giorni della settimana', desc: 'In quali giorni spendi di più.', icon: 'clock', render(c) {
+    const t = [0, 0, 0, 0, 0, 0, 0]; c.list.forEach(e => { t[(new Date(e.date + 'T12:00:00').getDay() + 6) % 7] += Number(e.amount || 0); });
+    const max = Math.max(...t, 1), top = t.indexOf(Math.max(...t)), L = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+    return `<div class="card col" style="gap:16px">
+      <div class="row between"><span style="font-weight:800">Giorni della settimana</span>${c.total ? `<span class="small muted">Più caro: ${WEEKDAYS[top]}</span>` : ''}</div>
+      <div class="bars">${t.map((v, i) => `<div><div class="b ${i === top && c.total ? 'on' : ''}" style="height:${Math.round(v / max * 100)}%" title="${fmtMoney(v)}"></div><span class="small ${i === top && c.total ? '' : 'muted'}">${L[i]}</span></div>`).join('')}</div>
+    </div>`; } },
+  compare: { title: 'Rispetto al periodo scorso', desc: 'Differenza con il mese o l\'anno precedente e le categorie che cambiano di più.', icon: 'chart', render(c) {
+    const [y, m] = currentMonth.split('-').map(Number), prevKey = localISO(new Date(y, m - 2, 1)).slice(0, 7), py = String(Number(c.year) - 1), today = todayISO();
+    const cut = e => !c.p.cur || (c.isMonth ? Number(e.date.slice(8)) <= c.p.elapsed : e.date.slice(5) <= today.slice(5));
+    const prev = (c.isMonth ? monthExpenses(prevKey) : live(S.expenses).filter(e => typeOf(e) === 'expense' && !catById(e.cat).excluded && e.date.startsWith(py))).filter(cut);
+    const pt = sumBy(prev), diff = c.total - pt, pcs = {}; byCategory(prev).forEach(x => { pcs[x.cat.id] = x.total; });
+    const cur = {}; c.cs.forEach(x => { cur[x.cat.id] = x; });
+    const movers = [...new Set([...Object.keys(pcs), ...Object.keys(cur)])].map(id => ({ cat: cur[id] ? cur[id].cat : catById(id), d: (cur[id] ? cur[id].total : 0) - (pcs[id] || 0) })).filter(x => Math.abs(x.d) >= 1).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 4);
+    const lbl = c.isMonth ? monthLabel(prevKey).split(' ')[0].toLowerCase() : py;
+    return `<div class="card col" style="gap:14px">
+      <div class="row between"><span style="font-weight:800">Rispetto a ${lbl}</span><span class="small muted">${c.p.cur ? 'stesso periodo' : 'periodo intero'}</span></div>
+      ${pt || c.total ? `<div class="row between"><div class="stat"><span class="v num" style="color:${diff > 0 ? 'var(--warn)' : 'var(--accent)'}">${diff > 0 ? '+' : diff < 0 ? '-' : ''} ${fmtMoney(Math.abs(diff))}</span><span class="small muted">${pt ? (diff >= 0 ? '+' : '-') + Math.round(Math.abs(diff) / pt * 100) + '% su ' + fmtMoney(pt) : 'nessuna spesa prima'}</span></div></div>
+      ${movers.length ? `<div class="col" style="gap:8px;border-top:1px solid var(--line);padding-top:12px">${movers.map(x => `<div class="row between small"><span class="row" style="gap:8px"><span class="dot" style="background:${x.cat.color}"></span>${esc(x.cat.name)}</span><span class="num" style="color:${x.d > 0 ? 'var(--warn)' : 'var(--accent)'}">${x.d > 0 ? '+' : '-'} ${fmtMoney(Math.abs(x.d))}</span></div>`).join('')}</div>` : ''}` : '<span class="muted small">Nessuna spesa da confrontare.</span>'}
+    </div>`; } },
+  diary: { title: 'Attività del diario', desc: 'Quanti giorni hai fatto ogni attività nel periodo.', icon: 'diary', render(c) {
+    const hs = activeHabits().map(h => ({ h, n: new Set(logsOf(h.id).filter(l => c.inPeriod(l)).map(l => l.date)).size }));
+    return `<div class="card col" style="gap:14px">
+      <div class="row between"><span style="font-weight:800">Attività del diario</span><span class="small muted">${c.label}</span></div>
+      ${hs.length ? hs.map(({ h, n }) => `<div class="col" style="gap:8px"><div class="row between small"><span class="row" style="gap:8px;font-weight:700"><span style="color:${h.color}">${svg(h.icon, 16)}</span>${esc(h.name)}</span><span class="num muted">${n} ${n === 1 ? 'giorno' : 'giorni'}</span></div><div class="bar"><div style="width:${Math.min(100, Math.round(n / c.p.elapsed * 100))}%;background:${h.color}"></div></div></div>`).join('') : '<span class="muted small">Nessuna attività nel diario.</span>'}
+    </div>`; } },
+};
+const anaActive = () => (Array.isArray(S.settings.anaWidgets) ? S.settings.anaWidgets : ANA_DEFAULT).filter(id => ANA_WIDGETS[id]);
+function anaSet(ids) { S.settings.anaWidgets = ids; save(false); route(); }
+function anaToggleEdit() { anaEdit = !anaEdit; route(); }
+function anaAdd(id) { anaSet([...anaActive().filter(x => x !== id), id]); }
+function anaRemove(id) { anaSet(anaActive().filter(x => x !== id)); }
+function anaMove(id, dir) { const a = anaActive(), i = a.indexOf(id), j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; anaSet(a); }
+function viewAnalisiEdit() {
+  const act = anaActive(), free = Object.keys(ANA_WIDGETS).filter(id => !act.includes(id));
+  const ib = (name, on, label, extra = '') => `<button class="chip" style="padding:0" onclick="${on}" aria-label="${label}" ${extra}>${svg(name, 18, 2.5)}</button>`;
+  return `
+    <div class="row between"><div class="col" style="gap:2px"><span class="title">Widget</span><span class="small muted">Scegli cosa mostrare in Analisi</span></div><button class="chip on" onclick="anaToggleEdit()">Fine</button></div>
+    <div class="col" style="gap:10px"><span class="section-title">In Analisi</span>
+      <div class="list">${act.map((id, i) => `<div class="item"><div class="tile" style="background:var(--surface-2);color:var(--accent)">${svg(ANA_WIDGETS[id].icon)}</div><span class="grow" style="font-weight:700;line-height:1.25">${ANA_WIDGETS[id].title}</span>
+        ${ib('up', `anaMove('${id}',-1)`, 'Sposta su', i === 0 ? 'disabled style="opacity:.35;padding:0"' : '')}${ib('down', `anaMove('${id}',1)`, 'Sposta giù', i === act.length - 1 ? 'disabled style="opacity:.35;padding:0"' : '')}${ib('x', `anaRemove('${id}')`, 'Rimuovi ' + ANA_WIDGETS[id].title)}</div>`).join('') || '<div class="empty">Nessun widget. Aggiungine uno qui sotto.</div>'}</div></div>
+    <div class="col" style="gap:10px"><span class="section-title">Disponibili</span>
+      <div class="list">${free.map(id => `<button class="item" onclick="anaAdd('${id}')"><div class="tile" style="background:var(--surface-2);color:var(--muted)">${svg(ANA_WIDGETS[id].icon)}</div><div class="col grow"><span style="font-weight:700">${ANA_WIDGETS[id].title}</span><span class="small muted">${ANA_WIDGETS[id].desc}</span></div><span class="chip" style="padding:0;color:var(--accent)">${svg('plus', 18, 2.5)}</span></button>`).join('') || '<div class="empty">Hai già aggiunto tutti i widget.</div>'}</div></div>`;
+}
+function viewAnalisi() {
+  if (anaEdit) return viewAnalisiEdit();
+  const c = anaCtx(), isMonth = c.isMonth, year = c.year;
   return `
     <div class="row between">
       <span class="title">Analisi</span>
-      <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
+      <div class="row" style="gap:8px">
+        <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
+        <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
+      </div>
     </div>
     <div class="row between">
       <button class="chip" onclick="shiftMonth(${isMonth ? -1 : -12});route()" aria-label="Periodo precedente">${svg('back', 14, 2.5)}</button>
       <span class="small muted">${isMonth ? monthLabel(currentMonth) : year}</span>
-      <button class="chip" onclick="shiftMonth(${isMonth ? 1 : 12});route()" aria-label="Periodo successivo" ${(isMonth ? currentMonth : year) >= (isMonth ? monthKey(todayISO()) : todayISO().slice(0, 4)) ? 'disabled style="opacity:.4"' : ''}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="chip" onclick="shiftMonth(${isMonth ? 1 : 12});route()" aria-label="Periodo successivo" ${(isMonth ? currentMonth : year) >= (isMonth ? monthKey(todayISO()) : todayISO().slice(0, 4)) ? 'disabled style="opacity:.4"' : ''}>${chevR}</button>
     </div>
-    <div class="card row" style="gap:18px">
-      <div class="donut-wrap">
-        <svg width="136" height="136" viewBox="0 0 200 200" aria-label="Ripartizione per categoria"><circle cx="100" cy="100" r="70" fill="none" stroke="var(--surface-2)" stroke-width="26"/>${donut}</svg>
-        <div class="donut-center"><span class="small muted">${isMonth ? monthLabel(currentMonth).split(' ')[0] : year}</span><span class="num" style="font-size:17px;font-weight:700">${fmtMoney(total)}</span></div>
-      </div>
-      <div class="legend">${cs.length ? shown.map(c => `<div class="row"><span class="dot" style="background:${c.cat.color}"></span><span class="grow truncate" style="font-weight:700">${esc(c.cat.name)}</span><span class="muted small">${Math.round(c.total / total * 100)}%</span></div>`).join('') : '<span class="muted small">Nessuna spesa nel periodo</span>'}</div>
-    </div>
-    <div class="card col" style="gap:14px">
-      <div class="row between"><span style="font-weight:800">Entrate e spese</span><span class="small muted">${isMonth ? monthLabel(currentMonth).split(' ')[0] : year}</span></div>
-      <div class="row between"><div class="stat"><span class="v num" style="color:var(--accent)">+ ${fmtMoney(income)}</span><span class="small muted">entrate</span></div><div class="stat" style="text-align:right"><span class="v num">- ${fmtMoney(total)}</span><span class="small muted">spese</span></div></div>
-      <div class="row between small" style="border-top:1px solid var(--line);padding-top:12px"><span class="muted">Differenza</span><span class="num" style="font-weight:700;color:${income - total >= 0 ? 'var(--accent)' : 'var(--warn)'}">${income - total >= 0 ? '+' : '-'} ${fmtMoney(income - total)}</span></div>
-    </div>
-    <div class="card col" style="gap:16px">
-      <div class="row between"><span style="font-weight:800">Ultimi 6 mesi</span><span class="small muted">Media ${fmtMoney(avg)}</span></div>
-      <div class="bars">${months.map(m => `<div><div class="b ${m.k === currentMonth ? 'on' : ''}" style="height:${Math.round(m.spent / max * 100)}%" title="${fmtMoney(m.spent)}"></div><span class="small ${m.k === currentMonth ? '' : 'muted'}">${m.label}</span></div>`).join('')}</div>
-      <div class="col" style="gap:8px;border-top:1px solid var(--line);padding-top:12px">${months.map(m => `<div class="row between small"><span class="muted" style="width:44px">${m.label}</span><span class="num" style="color:var(--accent)">+ ${fmtMoney(m.income, false)}</span><span class="num">- ${fmtMoney(m.spent, false)}</span></div>`).join('')}</div>
-    </div>
-    ${isMonth ? `<div class="col" style="gap:12px">
-      <div class="row between"><span class="section-title">Budget del mese</span><button class="chip" style="color:var(--accent);height:32px" onclick="go('#impostazioni')">Modifica</button></div>
-      <div class="list">${budgets.map(({ c, spent }) => { const p = Math.round(spent / c.budget * 100); return `<div class="item" style="flex-direction:column;align-items:stretch;gap:10px">
-        <div class="row between" style="font-weight:700"><span>${esc(c.name)}</span><span style="color:${p > 100 ? 'var(--warn)' : 'var(--muted)'}">${p > 100 ? '+ ' + fmtMoney(spent - c.budget) + ' oltre' : fmtMoney(c.budget - spent) + ' rimasti'}</span></div>
-        <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : c.color}"></div></div></div>`; }).join('') || '<div class="empty">Nessun budget impostato. Aprilo da Impostazioni, Categorie.</div>'}</div>
-    </div>` : ''}
-    <div class="col" style="gap:12px">
-      <span class="section-title">Per categoria</span>
-      <div class="list">${cs.map(c => `<div class="item"><div class="tile" style="background:${hexA(c.cat.color, .16)};color:${c.cat.color}">${svg(c.cat.icon)}</div><div class="col grow"><span style="font-weight:700">${esc(c.cat.name)}</span><span class="small muted">${list.filter(e => e.cat === c.cat.id).length} movimenti</span></div><span class="num" style="font-weight:600">${fmtMoney(c.total)}</span></div>`).join('')}</div>
-    </div>`;
+    ${anaActive().map(id => ANA_WIDGETS[id].render(c)).join('') || '<div class="empty">Nessun widget in Analisi.<br>Tocca il pulsante in alto per aggiungerne.</div>'}`;
 }
 // ---------- Diario attività ----------
 let diaryDate = todayISO();
@@ -736,6 +820,7 @@ function viewSettings() {
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
     ${det('data', 'Dati e importazione', data, true)}
     ${det('cats', 'Categorie e budget', categories)}
+    ${det('lock', 'Blocco app', lockSection())}
     ${det('gdrive', 'Google Drive', gdrive)}
     ${det('ai', 'Lettura scontrini con AI', ai, !AI.configured())}
     ${det('acc', 'Conti', `<input value="${esc(S.accounts.join(', '))}" onchange="S.accounts=this.value.split(',').map(x=>x.trim()).filter(Boolean);save()"><span class="hint">Separati da virgola.</span>`)}`;
@@ -965,8 +1050,115 @@ function viewImport() {
     ${body}`;
 }
 
+// ---------- Blocco app (PIN e biometria) ----------
+// Blocco locale dello schermo: tiene fuori chi prende il telefono sbloccato. I dati restano in chiaro sul dispositivo.
+const LOCK_KEY = 'spese.lock';
+const Lock = {
+  locked: false, entry: '', fails: 0, until: 0, hiddenAt: 0, msg: '',
+  cfg() { try { return JSON.parse(localStorage.getItem(LOCK_KEY)) || null; } catch (e) { return null; } },
+  put(c) { if (c) localStorage.setItem(LOCK_KEY, JSON.stringify(c)); else localStorage.removeItem(LOCK_KEY); },
+  b64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); },
+  unb64(t) { return Uint8Array.from(atob(t), c => c.charCodeAt(0)); },
+  rand(n) { return crypto.getRandomValues(new Uint8Array(n)); },
+  async hash(pin, salt) {
+    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+    return this.b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: this.unb64(salt), iterations: 150000 }, k, 256));
+  },
+  async setPin(pin) { const salt = this.b64(this.rand(16)), c = this.cfg() || { timeout: 60, cred: null }; this.put(Object.assign(c, { salt, hash: await this.hash(pin, salt), len: pin.length })); },
+  async check(pin) { const c = this.cfg(); return !!c && (await this.hash(pin, c.salt)) === c.hash; },
+  async enrollBio() {
+    if (!window.PublicKeyCredential) throw new Error('questo browser non supporta la biometria');
+    const cred = await navigator.credentials.create({ publicKey: { challenge: this.rand(32), rp: { name: 'Spese' }, user: { id: this.rand(16), name: 'spese', displayName: 'Spese' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' }, timeout: 60000 } });
+    const c = this.cfg(); c.cred = this.b64(cred.rawId); this.put(c);
+  },
+  async bio() {
+    const c = this.cfg(); if (!c || !c.cred || !this.locked) return;
+    try { await navigator.credentials.get({ publicKey: { challenge: this.rand(32), allowCredentials: [{ type: 'public-key', id: this.unb64(c.cred), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } }); this.unlock(); }
+    catch (e) { /* annullato: resta il PIN */ }
+  },
+  show() {
+    const c = this.cfg(); if (!c) return;
+    this.locked = true; this.entry = ''; this.msg = '';
+    document.documentElement.classList.add('locked'); $('#lock').classList.remove('hidden'); this.draw();
+    if (c.cred) setTimeout(() => this.bio(), 300);
+  },
+  unlock() { this.locked = false; this.fails = 0; this.entry = ''; document.documentElement.classList.remove('locked'); $('#lock').classList.add('hidden'); },
+  draw() {
+    const c = this.cfg(); if (!c) return;
+    const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="Lock.press('${n}')">${n}</button>`).join('');
+    $('#lock').innerHTML = `
+      <div class="col" style="align-items:center;gap:10px"><div class="avatar" style="width:56px;height:56px;border-radius:20px">${svg('lock', 26)}</div><span style="font-weight:800;font-size:20px">Spese</span><span class="small muted" id="lock-msg" style="min-height:18px">${esc(this.msg || 'Inserisci il PIN')}</span></div>
+      <div class="lock-dots" id="lock-dots">${Array.from({ length: c.len }, (_, i) => `<span class="${i < this.entry.length ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="keypad" style="width:100%;max-width:320px">${keys}
+        ${c.cred ? `<button onclick="Lock.bio()" aria-label="Usa la biometria">${svg('finger', 28)}</button>` : '<span></span>'}<button onclick="Lock.press('0')">0</button><button onclick="Lock.press('del')" aria-label="Cancella">${svg('del', 26)}</button>
+      </div>
+      <button class="small muted" style="padding:12px" onclick="Lock.forgot()">PIN dimenticato?</button>`;
+  },
+  async press(k) {
+    if (Date.now() < this.until) return;
+    if (navigator.vibrate) navigator.vibrate(8);
+    const c = this.cfg();
+    if (k === 'del') this.entry = this.entry.slice(0, -1); else if (this.entry.length < c.len) this.entry += k;
+    this.msg = ''; this.draw();
+    if (this.entry.length < c.len) return;
+    if (await this.check(this.entry)) return this.unlock();
+    this.entry = ''; this.fails++;
+    if (this.fails >= 5) { this.until = Date.now() + 30000; this.fails = 0; this.msg = 'Troppi tentativi, riprova tra 30 secondi'; } else this.msg = 'PIN errato';
+    this.draw(); const d = $('#lock-dots'); if (d) { d.classList.add('shake'); if (navigator.vibrate) navigator.vibrate([30, 40, 30]); }
+  },
+  forgot() {
+    if (!confirm('Il PIN non si può recuperare. Posso cancellare i dati locali di questo telefono e togliere il blocco: la copia su Google Drive resta e puoi risincronizzarla. Procedere?')) return;
+    localStorage.removeItem(KEY); this.put(null); location.reload();
+  },
+  init() {
+    if (this.cfg()) this.show(); else document.documentElement.classList.remove('locked');
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { this.hiddenAt = Date.now(); return; }
+      const c = this.cfg(); if (c && !this.locked && this.hiddenAt && (Date.now() - this.hiddenAt) / 1000 >= c.timeout) this.show();
+    });
+  },
+};
+function lockSection() {
+  const c = Lock.cfg();
+  if (!c) return `<button class="btn sm" onclick="lockSetupSheet()">${svg('lock', 18)} Attiva il blocco con PIN</button>
+      <span class="hint">All'apertura dell'app chiede un PIN di 4-6 cifre. Dopo averlo impostato puoi aggiungere anche l'impronta o il volto del telefono.</span>`;
+  return `<button class="btn sm" onclick="lockSetupSheet(true)">Cambia PIN</button>
+      <button class="btn sm" onclick="lockToggleBio()">${svg('finger', 18)} ${c.cred ? 'Disattiva impronta / volto' : 'Attiva impronta / volto'}</button>
+      <div class="field"><label>Blocca di nuovo dopo</label><select onchange="Lock.put({...Lock.cfg(), timeout: +this.value})">${[[0, 'Subito, appena esco dall\'app'], [60, '1 minuto'], [300, '5 minuti'], [900, '15 minuti']].map(([v, l]) => `<option value="${v}" ${v === c.timeout ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="hint">Tempo trascorso fuori dall'app. Con "Subito" anche aprire la fotocamera dallo Scan richiede lo sblocco al ritorno.</span></div>
+      <button class="btn danger sm" onclick="lockDisableSheet()">Disattiva il blocco</button>
+      <button class="btn sm" onclick="Lock.show()">Blocca adesso</button>`;
+}
+function lockSetupSheet(change) {
+  const f = (id, label) => `<div class="field"><label>${label}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
+  sheet(`<span style="font-weight:800;font-size:18px">${change ? 'Cambia PIN' : 'Imposta un PIN'}</span>
+    ${change ? f('l-cur', 'PIN attuale') : ''}${f('l-new', 'Nuovo PIN (4-6 cifre)')}${f('l-new2', 'Ripeti il PIN')}
+    <button class="btn primary" onclick="lockSave(${!!change})">Salva</button>`);
+}
+async function lockSave(change) {
+  if (!window.crypto || !crypto.subtle) return toast('Serve una connessione sicura (https)');
+  const a = $('#l-new').value, b = $('#l-new2').value;
+  if (change && !(await Lock.check($('#l-cur').value))) return toast('PIN attuale errato');
+  if (!/^\d{4,6}$/.test(a)) return toast('Il PIN deve avere da 4 a 6 cifre');
+  if (a !== b) return toast('I due PIN non coincidono');
+  await Lock.setPin(a); closeSheet(); toast(change ? 'PIN cambiato' : 'Blocco attivato'); route();
+  if (!change && window.PublicKeyCredential && confirm('Vuoi sbloccare l\'app anche con l\'impronta o il volto?')) lockToggleBio();
+}
+async function lockToggleBio() {
+  const c = Lock.cfg();
+  try { if (c.cred) { c.cred = null; Lock.put(c); toast('Biometria disattivata'); } else { await Lock.enrollBio(); toast('Biometria attivata'); } }
+  catch (e) { toast('Biometria non attivata: ' + (e.name === 'NotAllowedError' ? 'operazione annullata' : e.message), 3500); }
+  route();
+}
+function lockDisableSheet() {
+  sheet(`<span style="font-weight:800;font-size:18px">Disattiva il blocco</span>
+    <div class="field"><label>PIN attuale</label><input id="l-cur" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>
+    <button class="btn danger" onclick="lockDisable()">Disattiva</button>`);
+}
+async function lockDisable() { if (!(await Lock.check($('#l-cur').value))) return toast('PIN errato'); Lock.put(null); closeSheet(); toast('Blocco disattivato'); route(); }
+
 // ---------- Avvio ----------
 applyTheme();
+Lock.init();
 normalizeHabits();
 route();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

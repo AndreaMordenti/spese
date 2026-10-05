@@ -3,7 +3,7 @@
   "short_name": "Spese",
   "description": "Tracking spese personali e diario attività, con dati sul tuo Google Drive",
   "id": "./",
-  "start_url": "./index.html#home",
+  "start_url": "./index.html#analisi",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
