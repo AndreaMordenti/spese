@@ -304,6 +304,7 @@ function viewAggiungi(args) {
     ${draft.id ? `<button class="btn danger" onclick="deleteExpense('${draft.id}')">Elimina</button>` : ''}`;
 }
 function key(k) {
+  if (navigator.vibrate) navigator.vibrate(8);
   let s = draft.amountStr;
   if (k === 'del') s = s.length > 1 ? s.slice(0, -1) : '0';
   else if (k === ',') { if (!s.includes(',')) s += ','; }
@@ -463,6 +464,35 @@ function viewDiario() {
         <div class="col grow"><span style="font-weight:700">${esc(h.name)}</span><span class="small muted">${st.total} giorni, ${st.first ? longDate(st.first) + ' › ' + longDate(st.last) : 'nessuna registrazione'}</span></div>
       </button>`; }).join('')}</div></details>` : ''}`;
 }
+// Un'attività = un nome. Ripulisce i nomi con timestamp e unisce i duplicati, spostando le registrazioni.
+function moveHabitLogs(fromId, toId) {
+  const now = Date.now(), have = new Set(logsOf(toId).map(l => l.date + '|' + (l.time || '')));
+  S.habitLogs.forEach(l => {
+    if (l.deleted || l.habitId !== fromId) return;
+    const k = l.date + '|' + (l.time || '');
+    if (have.has(k)) l.deleted = true; else { l.habitId = toId; have.add(k); }
+    l.updatedAt = now;
+  });
+}
+function normalizeHabits() {
+  let changed = false;
+  live(S.habits).forEach(h => {
+    const name = cleanHabitName(h.name); if (!name || name === h.name) return;
+    const target = live(S.habits).find(x => x.id !== h.id && slug(x.name) === slug(name));
+    const now = Date.now();
+    if (target) { moveHabitLogs(h.id, target.id); h.deleted = true; target.archived = target.archived && h.archived; target.updatedAt = now; }
+    else h.name = name;
+    h.updatedAt = now; changed = true;
+  });
+  if (changed) save(false);
+  return changed;
+}
+function mergeHabit(id) {
+  const to = $('#h-merge').value; if (!to) return toast('Scegli l\'attività di destinazione');
+  const from = habitById(id), dest = habitById(to);
+  if (!confirm(`Unire "${from.name}" in "${dest.name}"? Le registrazioni passano a "${dest.name}".`)) return;
+  moveHabitLogs(id, to); from.deleted = true; from.updatedAt = Date.now(); save(); closeSheet(); toast('Attività unite'); route();
+}
 function editHabit(id) {
   const h = id ? habitById(id) : { name: '', color: PALETTE[live(S.habits).length % PALETTE.length], icon: 'tag' };
   sheet(`
@@ -471,6 +501,7 @@ function editHabit(id) {
     <div class="field"><label>Icona</label><div class="row" style="flex-wrap:wrap;gap:8px">${HABIT_ICONS.map(ic => `<button class="chip ${ic === h.icon ? 'on' : ''}" data-icon="${ic}" onclick="pick(this)">${svg(ic, 18)}</button>`).join('')}</div></div>
     <div class="field"><label>Colore</label><div class="row" style="flex-wrap:wrap;gap:8px">${PALETTE.map(c => `<button class="chip ${c === h.color ? 'on' : ''}" data-color="${c}" style="width:40px;padding:0;justify-content:center" onclick="pick(this)"><span class="dot" style="background:${c};width:16px;height:16px"></span></button>`).join('')}</div></div>
     <button class="btn primary" onclick="saveHabit('${id || ''}')">Salva</button>
+    ${id && live(S.habits).length > 1 ? `<div class="field"><label>Unisci in un'altra attività</label><select id="h-merge"><option value="">Scegli l'attività di destinazione</option>${live(S.habits).filter(x => x.id !== id).sort((a, b) => a.name.localeCompare(b.name)).map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></div><button class="btn" onclick="mergeHabit('${id}')">Unisci</button>` : ''}
     ${id ? `<button class="btn" onclick="archiveHabit('${id}')">${h.archived ? 'Ripristina nel diario' : 'Archivia (conserva lo storico)'}</button>
     <button class="btn danger" onclick="deleteHabit('${id}')">Elimina attività e cronologia</button>` : ''}`);
 }
@@ -656,6 +687,7 @@ const Drive = {
         S.habits = this.mergeArr(S.habits, remote.habits || []);
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
         if ((remote.categories || []).length) dropPristineDefaults();
+        normalizeHabits();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
       }
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.payload()) });
@@ -716,15 +748,21 @@ function editCategory(id) {
     <div class="field"><label>Nome</label><input id="c-name" value="${esc(c.name)}"></div>
     ${kind === 'expense' ? `<div class="field"><label>Budget mensile (€)</label><input id="c-budget" type="number" min="0" inputmode="decimal" value="${c.budget || ''}" placeholder="Nessun budget"></div>
     <label class="row" style="gap:12px;cursor:pointer"><input type="checkbox" id="c-excl" ${c.excluded ? 'checked' : ''} style="width:24px;min-height:24px;padding:0"><span style="font-size:14px;line-height:1.4">Non conta nel totale delle spese (per esempio gli investimenti)</span></label>` : ''}
+    ${catStyleFields(c)}
     <button class="btn primary" onclick="saveCategory('${id}')">Salva</button>
     ${others.length ? `<div class="field"><label>Unisci in un'altra categoria</label><select id="c-merge"><option value="">Scegli la categoria di destinazione</option>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><span class="hint">I ${n} movimenti passano alla categoria scelta e questa viene rimossa.</span></div>
     <button class="btn" onclick="mergeCategory('${id}')">Unisci</button>` : ''}
-    ${n === 0 ? `<button class="btn danger" onclick="removeCategory('${id}')">Elimina categoria</button>` : ''}`);
+    ${n === 0 ? `<button class="btn danger" onclick="removeCategory('${id}')">Elimina categoria</button>` : `<span class="hint">Per eliminare una categoria che ha movimenti, uniscila prima in un'altra.</span>`}`);
+}
+function catStyleFields(c) {
+  return `<div class="field"><label>Icona</label><div class="row" style="flex-wrap:wrap;gap:8px">${CAT_ICONS.map(ic => `<button class="chip ${ic === c.icon ? 'on' : ''}" data-icon="${ic}" onclick="pick(this)" aria-label="${ic}">${svg(ic, 18)}</button>`).join('')}</div></div>
+    <div class="field"><label>Colore</label><div class="row" style="flex-wrap:wrap;gap:8px">${PALETTE.map(col => `<button class="chip ${col === c.color ? 'on' : ''}" data-color="${col}" style="width:44px;padding:0" onclick="pick(this)" aria-label="${col}"><span class="dot" style="background:${col};width:16px;height:16px"></span></button>`).join('')}</div></div>`;
 }
 function saveCategory(id) {
   const c = catById(id), name = $('#c-name').value.trim(); if (!name) return toast('Il nome non può essere vuoto');
   if (name !== c.name) c.aliases = [...new Set([...(c.aliases || []), c.name])];
   c.name = name; if ($('#c-budget')) c.budget = Math.max(0, Number($('#c-budget').value) || 0); if ($('#c-excl')) c.excluded = $('#c-excl').checked;
+  c.icon = $('#sheet .chip.on[data-icon]')?.dataset.icon || c.icon; c.color = $('#sheet .chip.on[data-color]')?.dataset.color || c.color;
   c.updatedAt = Date.now(); save(); closeSheet(); route();
 }
 function mergeCategory(id) {
@@ -737,8 +775,20 @@ function mergeCategory(id) {
 }
 function removeCategory(id) { const c = catById(id); c.deleted = true; c.updatedAt = Date.now(); save(); closeSheet(); route(); }
 function addCategory() {
-  const name = prompt('Nome della categoria'); if (!name) return;
-  ensureCategory(name.trim(), catKindView); save(); route();
+  const c = { color: PALETTE[S.categories.length % PALETTE.length], icon: 'tag' };
+  sheet(`<span style="font-weight:800;font-size:18px">Nuova categoria ${catKindView === 'income' ? 'di entrata' : 'di spesa'}</span>
+    <div class="field"><label>Nome</label><input id="c-name" placeholder="Es. Animali"></div>
+    ${catKindView === 'expense' ? `<div class="field"><label>Budget mensile (€)</label><input id="c-budget" type="number" min="0" inputmode="decimal" placeholder="Nessun budget"></div>` : ''}
+    ${catStyleFields(c)}
+    <button class="btn primary" onclick="createCategory()">Aggiungi</button>`);
+}
+function createCategory() {
+  const name = $('#c-name').value.trim(); if (!name) return toast('Dai un nome alla categoria');
+  if (findCategory(name, catKindView)) return toast('Esiste già una categoria con questo nome');
+  const c = ensureCategory(name, catKindView);
+  c.icon = $('#sheet .chip.on[data-icon]')?.dataset.icon || c.icon; c.color = $('#sheet .chip.on[data-color]')?.dataset.color || c.color;
+  if ($('#c-budget')) c.budget = Math.max(0, Number($('#c-budget').value) || 0);
+  c.updatedAt = Date.now(); save(); closeSheet(); route();
 }
 function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function exportJSON() { download(`spese-backup-${todayISO()}.json`, JSON.stringify(Drive.payload(), null, 2), 'application/json'); }
@@ -788,7 +838,10 @@ function parseWalletRows(rows) {
   });
   return out;
 }
-const habitNameFromFile = fn => fn.replace(/\.[a-z0-9]+$/i, '').replace(/_gen_\d{2}_\d{4}.*$/i, '').replace(/[_-]+/g, ' ').trim();
+// Toglie dal nome il timestamp dell'export ("Read_ott_05_2026_11_35_02_PM" diventa "Read").
+const HABIT_STAMP = /[\s_-]+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec)[a-z]*[\s_-]+\d{1,2}[\s_-]+\d{4}.*$/i;
+const cleanHabitName = n => { const t = String(n).replace(HABIT_STAMP, '').replace(/[_-]+/g, ' ').replace(/\s*\(\d+\)$/, '').replace(/\s+/g, ' ').trim(); return t.replace(/^./, c => c.toUpperCase()); };
+const habitNameFromFile = fn => cleanHabitName(fn.replace(/\.[a-z0-9]{2,4}$/i, ''));
 function detectFile(name, text) {
   const t = String(text).trimStart();
   if (t[0] === '{') { try { const j = JSON.parse(t); if (j && (j.expenses || j.habitLogs || j.habits)) return { kind: 'backup', data: j }; } catch (e) { /* non valido */ } return { kind: 'unknown' }; }
@@ -872,7 +925,7 @@ function applyPlan(plan) {
     fresh.forEach(r => S.habitLogs.push({ id: uid(), habitId: h.id, date: r.date, time: r.time, note: r.note, updatedAt: now }));
     res.logs += fresh.length;
   });
-  save(); return res;
+  normalizeHabits(); save(); return res;
 }
 let pend = { plan: null };
 async function onFiles(fileList) {
@@ -914,6 +967,7 @@ function viewImport() {
 
 // ---------- Avvio ----------
 applyTheme();
+normalizeHabits();
 route();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 window.addEventListener('load', () => { setTimeout(() => { if (S.settings.clientId) Drive.sync().catch(() => {}); }, 1200); });

@@ -2,9 +2,10 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0D0E12">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="dark light">
 <title>Spese</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -20,7 +21,7 @@
     --font: Manrope, system-ui, sans-serif; --font-num: Sora, system-ui, sans-serif;
     --r-s: 12px; --r-m: 18px; --r-l: 22px; --card-border: 0 solid transparent;
     --nav-h: 84px; --fab-shadow: 0 12px 30px rgba(212,255,91,0.25);
-    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    color-scheme: dark; --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
   }
   :root[data-theme="minimal"] {
     --bg: #F7F6F2; --surface: #F7F6F2; --surface-2: #EFEDE7; --surface-3: #E3E0D8;
@@ -28,11 +29,13 @@
     --accent: #1F5C45; --on-accent: #F7F6F2; --warn: #B4531A; --danger: #A8323E;
     --font: 'Instrument Sans', system-ui, sans-serif; --font-num: 'Instrument Serif', Georgia, serif;
     --r-s: 8px; --r-m: 12px; --r-l: 14px; --card-border: 1px solid var(--line);
-    --fab-shadow: none;
+    --fab-shadow: none; color-scheme: light;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { margin: 0; height: 100%; min-height: 100dvh; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; }
   body { overscroll-behavior-y: none; }
+  button, input, select, a, label { touch-action: manipulation; }
   button, input, select { font: inherit; color: inherit; }
   button { cursor: pointer; border: none; background: none; padding: 0; }
   a { color: inherit; text-decoration: none; }
@@ -44,7 +47,7 @@
   :root[data-theme="minimal"] .num { font-family: var(--font); letter-spacing: 0; }
   :root[data-theme="minimal"] .hero-amount.num, :root[data-theme="minimal"] .amount-input.num, :root[data-theme="minimal"] .stat .v.num { font-family: var(--font-num); letter-spacing: -1px; }
   .muted { color: var(--muted); }
-  .small { font-size: 12px; font-weight: 600; }
+  .small { font-size: 13px; font-weight: 600; }
   .row { display: flex; align-items: center; gap: 12px; }
   .between { justify-content: space-between; }
   .col { display: flex; flex-direction: column; gap: 4px; }
@@ -72,7 +75,7 @@
   :root[data-theme="minimal"] .tile { width: 36px; height: 36px; border-radius: 50%; }
   .tile svg { width: 20px; height: 20px; }
 
-  .chip { height: 40px; padding: 0 14px; border-radius: 14px; background: var(--surface-2); border: var(--card-border); display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .chip { height: 44px; min-width: 44px; justify-content: center; padding: 0 14px; border-radius: 14px; background: var(--surface-2); border: var(--card-border); display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; white-space: nowrap; }
   :root[data-theme="minimal"] .chip { background: transparent; border: 1px solid var(--line); border-radius: 20px; font-weight: 500; }
   .chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   :root[data-theme="minimal"] .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
@@ -101,7 +104,7 @@
   .seg { display: flex; gap: 3px; height: 10px; }
   .seg > div { border-radius: 6px; }
   :root[data-theme="minimal"] .seg { height: 2px; gap: 0; } :root[data-theme="minimal"] .seg > div { border-radius: 0; }
-  .hscroll { display: flex; gap: 12px; overflow-x: auto; margin: 0 -20px; padding: 0 20px 4px; scrollbar-width: none; }
+  .hscroll { overscroll-behavior-x: contain; display: flex; gap: 12px; overflow-x: auto; margin: 0 -20px; padding: 0 20px 4px; scrollbar-width: none; }
   .hscroll::-webkit-scrollbar { display: none; }
   .budget-card { flex: 0 0 150px; display: flex; flex-direction: column; gap: 12px; }
   .avatar { width: 40px; height: 40px; border-radius: 14px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; color: var(--accent); }
@@ -110,7 +113,7 @@
 
   /* Nav */
   nav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--sab)); padding: 10px 12px var(--sab); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); border-top: 1px solid var(--line); display: flex; justify-content: space-around; align-items: flex-start; z-index: 10; }
-  nav a { width: 60px; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 10px; font-weight: 700; }
+  nav a { width: 64px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 11px; font-weight: 700; }
   nav a.on { color: var(--text); }
   nav a svg { width: 24px; height: 24px; }
   nav a.fab { width: 60px; height: 60px; margin-top: -30px; border-radius: 20px; background: var(--accent); color: var(--on-accent); box-shadow: var(--fab-shadow); }
@@ -128,7 +131,7 @@
   :root[data-theme="minimal"] .amount-input .big { font-size: 84px; font-weight: 400; }
   :root[data-theme="minimal"] .amount-input .cents { font-weight: 400; }
   .cat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-  .cat-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; line-height: 1.15; max-width: 100%; font-size: 10.5px; overflow-wrap: normal; word-break: normal; }
+  .cat-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; line-height: 1.15; max-width: 100%; font-size: 11.5px; overflow-wrap: normal; word-break: normal; }
   .cat-btn { height: 80px; padding: 0 4px; border-radius: var(--r-m); background: var(--surface); border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 11px; font-weight: 700; }
   .cat-btn svg { width: 22px; height: 22px; }
   .cat-btn.on { border-color: var(--accent); }
@@ -137,7 +140,7 @@
   :root[data-theme="minimal"] .cat-btn svg { display: none; }
   :root[data-theme="minimal"] .cat-btn.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   .keypad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .keypad button { height: 54px; border-radius: var(--r-m); background: var(--surface); border: var(--card-border); font-family: var(--font-num); font-size: 26px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .keypad button { height: 60px; border-radius: var(--r-m); background: var(--surface); border: var(--card-border); font-family: var(--font-num); font-size: 26px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
   .keypad button svg { width: 26px; height: 26px; }
   :root[data-theme="minimal"] .keypad button { background: transparent; border: none; font-family: var(--font); font-weight: 400; font-size: 28px; }
 
@@ -163,7 +166,7 @@
   /* Diario */
   .week { display: flex; justify-content: space-between; }
   .week > button { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .week .day { width: 40px; height: 40px; border-radius: 14px; background: var(--surface); border: var(--card-border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .week .day { width: 44px; height: 44px; border-radius: 14px; background: var(--surface); border: var(--card-border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
   .week .day.today { background: var(--accent); color: var(--on-accent); }
   :root[data-theme="minimal"] .week .day { background: transparent; border: none; font-weight: 400; }
   :root[data-theme="minimal"] .week .day.today { background: transparent; color: var(--accent); font-weight: 700; }
@@ -215,7 +218,7 @@
   /* Sheet / toast */
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: none; align-items: flex-end; justify-content: center; }
   .sheet-bg.open { display: flex; }
-  .sheet { width: 100%; max-width: 560px; background: var(--bg); border-radius: 28px 28px 0 0; padding: 14px 20px calc(24px + var(--sab)); display: flex; flex-direction: column; gap: 18px; max-height: 92vh; overflow-y: auto; }
+  .sheet { width: 100%; max-width: 560px; background: var(--bg); border-radius: 28px 28px 0 0; padding: 14px 20px calc(24px + var(--sab)); display: flex; flex-direction: column; gap: 18px; max-height: 92vh; max-height: 92dvh; overscroll-behavior: contain; overflow-y: auto; }
   .handle { width: 44px; height: 5px; border-radius: 3px; background: var(--surface-3); align-self: center; }
   body.modal nav { display: none; }
   body.modal #app { padding-bottom: calc(24px + var(--sab)); }
