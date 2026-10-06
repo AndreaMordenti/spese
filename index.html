@@ -114,14 +114,14 @@
 
   /* Nav */
   nav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + var(--sab)); padding: 10px 12px var(--sab); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px); border-top: 1px solid var(--line); display: flex; justify-content: space-around; align-items: flex-start; z-index: 10; }
-  nav a { flex: 1; max-width: 80px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 11px; font-weight: 700; }
+  nav a { flex: 1; max-width: 80px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--faint); font-size: 10.5px; letter-spacing: -0.2px; font-weight: 700; }
   nav a.on { color: var(--text); }
   nav a svg { width: 24px; height: 24px; }
   nav a.fab { flex: 0 0 60px; max-width: none; width: 60px; height: 60px; margin-top: -30px; border-radius: 20px; background: var(--accent); color: var(--on-accent); box-shadow: var(--fab-shadow); }
   nav a.fab svg { width: 28px; height: 28px; }
   :root[data-theme="minimal"] nav a.fab { background: var(--text); color: var(--bg); border-radius: 30px; margin-top: -26px; }
   :root[data-theme="minimal"] nav a svg:not(.fab svg) { display: none; }
-  :root[data-theme="minimal"] nav a { font-size: 13px; font-weight: 500; color: var(--muted); }
+  :root[data-theme="minimal"] nav a { font-size: 11px; font-weight: 500; color: var(--muted); }
   :root[data-theme="minimal"] nav a.on { color: var(--text); font-weight: 700; }
 
   /* Add */
@@ -144,6 +144,24 @@
   .keypad button { height: 60px; border-radius: var(--r-m); background: var(--surface); border: var(--card-border); font-family: var(--font-num); font-size: 26px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
   .keypad button svg { width: 26px; height: 26px; }
   :root[data-theme="minimal"] .keypad button { background: transparent; border: none; font-family: var(--font); font-weight: 400; font-size: 28px; }
+
+  /* Inserimento: tutto in una schermata, tastierino in basso */
+  .screen[data-view="aggiungi"] { min-height: calc(100dvh - var(--sat) - var(--sab) - 44px); gap: 12px; }
+  .screen[data-view="aggiungi"] .amount-input { padding: 0; }
+  .screen[data-view="aggiungi"] .amount-input .big { font-size: clamp(44px, 7dvh, 64px); }
+  :root[data-theme="minimal"] .screen[data-view="aggiungi"] .amount-input .big { font-size: clamp(52px, 8.5dvh, 84px); }
+  .mini { width: auto; min-height: 40px; padding: 6px 12px; font-size: 14px; }
+  .mini-note { min-height: 44px; padding: 10px 14px; }
+  .cat-current { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 12px; border-radius: var(--r-m); background: var(--surface); border: var(--card-border); min-height: 52px; }
+  .cat-current .small { display: inline-flex; align-items: center; gap: 4px; }
+  :root[data-theme="minimal"] .cat-current { background: transparent; border: 1px solid var(--line); }
+  .cat-strip { gap: 8px; }
+  .cat-strip .chip { max-width: 170px; flex-shrink: 0; }
+  .add-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+  .add-bottom .keypad button { height: clamp(46px, 6.4dvh, 60px); }
+  .search-box { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: var(--r-s); background: var(--surface-2); color: var(--muted); }
+  .search-box input { background: transparent; border: none; padding: 12px 0; outline: none; }
+  :root[data-theme="minimal"] .search-box { background: transparent; border: 1px solid var(--line); }
 
   /* Analytics */
   .donut-wrap { position: relative; width: 136px; height: 136px; flex: 0 0 136px; }
@@ -249,5 +267,9 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="app.js" defer></script>
+<script src="trends.js" defer></script>
+<script src="planned.js" defer></script>
+<script src="portfolio.js" defer></script>
+<script src="boot.js" defer></script>
 </body>
 </html>

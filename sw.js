@@ -1,12 +1,12 @@
 // Service worker: app disponibile offline, API sempre dalla rete.
-const CACHE = 'spese-v3';
-const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
+const CACHE = 'spese-v5';
+const SHELL = ['./', './index.html', './app.js', './trends.js', './planned.js', './portfolio.js', './boot.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  const isApi = /googleapis\.com|accounts\.google\.com|groq\.com|openrouter\.ai|anthropic\.com/.test(url.host);
+  const isApi = /googleapis\.com|accounts\.google\.com|groq\.com|openrouter\.ai|anthropic\.com|allorigins\.win|yahoo\.com|coingecko\.com|europa\.eu|workers\.dev/.test(url.host);
   if (isApi) return;
   if (url.origin === location.origin) {
     // App shell: rete prima (per ricevere gli aggiornamenti), cache se offline.

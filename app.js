@@ -59,10 +59,15 @@ const I = {
   down: '<path d="m6 9 6 6 6-6"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   finger: '<path d="M5 12a7 7 0 0 1 14 0v1"/><path d="M8 13v-1a4 4 0 0 1 8 0v2a10 10 0 0 1-1.5 5"/><path d="M12 12v3a14 14 0 0 1-1.5 4.5"/><path d="M5 15.5c0 1.5.3 2.8.8 4"/>',
+  bag: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+  bank: '<path d="m12 3 9 5H3z"/><path d="M5 10v8M10 10v8M14 10v8M19 10v8"/><path d="M3 21h18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+  trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  repeat: '<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>',
   cloud: '<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z"/>',
 };
 const svg = (name, size = 20, w = 2.2) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[name] || I.tag}</svg>`;
-const CAT_ICONS = ['cart', 'food', 'car', 'home', 'play', 'heart', 'work', 'gift', 'book', 'tag'];
+const CAT_ICONS = ['cart', 'food', 'car', 'home', 'bag', 'play', 'heart', 'work', 'bank', 'gift', 'book', 'tag'];
 const HABIT_ICONS = ['dumbbell', 'book', 'clock', 'run', 'pen', 'heart', 'car', 'tag'];
 const PALETTE = ['#7AD7F0', '#FFB36B', '#B59CFF', '#F2C94C', '#FF8FAB', '#6EE7B7', '#9AA0AE', '#F97373', '#60A5FA', '#FDBA74'];
 
@@ -92,7 +97,11 @@ function load() {
     habits: s.habits || [],
     habitLogs: s.habitLogs || [],
     accounts: s.accounts || [...DEFAULT_ACCOUNTS],
-    settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null }, s.settings || {}),
+    planned: s.planned || [],
+    holdings: s.holdings || [],
+    trades: s.trades || [],
+    snaps: s.snaps || [],
+    settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null, proxyUrl: '', plannedSeeded: false }, s.settings || {}),
     meta: s.meta || { driveFileId: null, lastSync: null },
   };
 }
@@ -107,6 +116,25 @@ const cats = kind => live(S.categories).filter(c => (c.kind || 'expense') === ki
 const catById = id => S.categories.find(c => c.id === id) || UNKNOWN_CAT;
 const habitById = id => S.habits.find(h => h.id === id);
 const slug = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'x';
+// ---------- Gruppi di categorie (macro → micro) ----------
+// Ogni categoria di spesa appartiene a un gruppo: assegnato a mano (c.group) o riconosciuto dal nome.
+const CAT_GROUPS = [
+  { id: 'cibo', name: 'Cibo e bevande', icon: 'food', color: '#FFB36B', re: /aliment|spesa|supermerc|ristor|\bbar\b|caff|fast.?food|cibo|bevand|pizz|panett|mercat|pranz|cena|colazion|delivery|gelat/i },
+  { id: 'regali', name: 'Regali e beneficenza', icon: 'gift', color: '#FF8FAB', re: /regal|benefic|dona|charity|children/i },
+  { id: 'svago', name: 'Svago e abbonamenti', icon: 'play', color: '#7AD7F0', re: /\btv\b|stream|software|giochi|cultura|evento|intratten|cinema|libri|audio|viagg|vacanz|hobby|abbonam|svago|music|concert|teatr|hotel|alloggi/i },
+  { id: 'salute', name: 'Salute e benessere', icon: 'heart', color: '#6EE7B7', re: /salute|farmac|drogher|medic|sanit|benessere|bellezza|\bsport|fitness|barbier|parrucch|palestra|dentist|ottic|visit/i },
+  { id: 'casa', name: 'Casa e utenze', icon: 'home', color: '#F2C94C', re: /abitaz|\bcasa\b|energia|utenz|arred|affitto|mutuo|\bluce|\bgas\b|acqua|condomin|manutenz|telefon|internet|elettrodom|giardin|pulizi/i },
+  { id: 'trasporti', name: 'Trasporti e auto', icon: 'car', color: '#B59CFF', re: /carbur|veicol|parcheg|telepass|\bauto\b|trasport|lavaggio|multe|treno|taxi|mezzi|benzin|bollo|autostrad|noleggio|\bmoto|bici|voli?\b/i },
+  { id: 'shopping', name: 'Shopping', icon: 'bag', color: '#F97373', re: /shopping|abbigl|vestit|scarpe|elettron|gioiell|accessor|animal|bambin|negozi|acquist|amazon|tecnolog/i },
+  { id: 'finanze', name: 'Finanze', icon: 'bank', color: '#9AA0AE', re: /finanz|tass|impost|banc|commission|assicuraz|prestit|rat[ae]\b|interess|investim|risparm|\bf24/i },
+  { id: 'lavoro', name: 'Lavoro e formazione', icon: 'work', color: '#60A5FA', re: /lavoro|ufficio|profession|formazion|istruzion|scuol|corso|universit/i },
+  { id: 'altro', name: 'Altro', icon: 'tag', color: '#6B7280', re: /$^/ },
+];
+const groupById = id => CAT_GROUPS.find(g => g.id === id) || CAT_GROUPS[CAT_GROUPS.length - 1];
+function groupOf(c) {
+  if (c.group && CAT_GROUPS.some(g => g.id === c.group)) return c.group;
+  const g = CAT_GROUPS.find(x => x.re.test(c.name || '')); return g ? g.id : 'altro';
+}
 function iconFor(name) {
   const n = String(name).toLowerCase();
   const rules = [[/aliment|spesa|supermerc/, 'cart'], [/ristor|\bbar\b|caff|fast-food/, 'food'], [/carbur|veicol|parcheg|telepass|\bauto\b|trasport|lavaggio|multe/, 'car'], [/abitaz|\bcasa\b|energia|utenz|arred|affitto|mutuo/, 'home'], [/\btv\b|stream|software|giochi|cultura|evento|intratten/, 'play'], [/salute|farmac|drogher|medic|sanit|benessere|bellezza|sport|fitness|barbier/, 'heart'], [/stipend|fattur|autonom|societ|p\.iva|serviz|lavoro|assegn|royalt/, 'work'], [/regal|benefic|piacer/, 'gift'], [/libri|audio|abbonam/, 'book']];
@@ -131,10 +159,11 @@ function applyTheme() {
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
 
 // ---------- Routing ----------
-const ROUTES = ['home', 'analisi', 'aggiungi', 'diario', 'scan', 'impostazioni', 'importa', 'spese'];
+// Registro delle schermate: i moduli (pianificati, portafoglio) aggiungono le loro.
+const VIEWS = { home: viewHome, analisi: viewAnalisi, aggiungi: viewAggiungi, diario: viewDiario, scan: viewScan, impostazioni: viewSettings, importa: viewImport, spese: viewSpese };
 function route() {
   const h = (location.hash || '#analisi').slice(1).split('/');
-  const name = ROUTES.includes(h[0]) ? h[0] : 'analisi';
+  const name = VIEWS[h[0]] ? h[0] : 'analisi';
   if (name !== 'aggiungi') draft = null;
   render(name, h.slice(1));
   window.scrollTo(0, 0);
@@ -145,14 +174,14 @@ function go(h) { location.hash = h; }
 // ---------- Rendering ----------
 function render(name, args) {
   const app = $('#app');
-  const views = { home: viewHome, analisi: viewAnalisi, aggiungi: viewAggiungi, diario: viewDiario, scan: viewScan, impostazioni: viewSettings, importa: viewImport, spese: viewSpese };
+  const views = VIEWS;
   document.body.classList.toggle('modal', name === 'aggiungi');
   app.innerHTML = `<section class="screen active" data-view="${name}">${views[name](args)}</section>`;
   renderNav(name);
   if (views[name].after) views[name].after(args);
 }
 function renderNav(active) {
-  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['diario', 'Diario', 'diary'], ['impostazioni', 'Impostazioni', 'gear']];
+  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary'], ['impostazioni', 'Impostazioni', 'gear']];
   $('#nav').innerHTML = items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}</a>`
     : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('');
@@ -222,6 +251,7 @@ function viewHome() {
         <div class="col" style="gap:2px;text-align:left"><span style="font-size:14px;font-weight:700">${esc(c.name)}</span><span class="small muted">${fmtMoney(spent)} di ${fmtInt(c.budget)}</span></div>
         <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : c.color}"></div></div>
       </button>`; }).join('')}</div>` : ''}
+    ${plannedHomeBlock()}
     <div class="col" style="gap:14px">
       <div class="row between"><span class="section-title">Ultimi movimenti</span><a href="#spese" class="small" style="color:var(--accent)">Vedi tutti</a></div>
       ${recent.length ? `<div class="list">${recent.map(expenseRow).join('')}</div>` : `<div class="empty">Nessun movimento ancora.<br>Tocca + per registrare il primo, oppure importa i tuoi dati da Impostazioni.</div>`}
@@ -231,7 +261,7 @@ function expenseRow(e) {
   const c = catById(e.cat), inc = typeOf(e) === 'income';
   return `<button class="item" onclick="openExpense('${e.id}')">
     <div class="tile" style="background:${hexA(c.color, .16)};color:${c.color}">${svg(c.icon)}</div>
-    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(e.note || c.name)}</span><span class="small muted truncate">${fmtDate(e.date)}${e.time ? ', ' + e.time : ''}${e.note ? ' · ' + esc(c.name) : ''}${e.source === 'scan' ? ' · Scontrino' : ''}${e.account && S.accounts.length > 1 ? ' · ' + esc(e.account) : ''}</span></div>
+    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(e.note || c.name)}</span><span class="small muted truncate">${fmtDate(e.date)}${e.time ? ', ' + e.time : ''}${e.note ? ' · ' + esc(c.name) : ''}${e.source === 'scan' ? ' · Scontrino' : ''}${e.source === 'planned' ? ' · Pianificato' : ''}${e.account && S.accounts.length > 1 ? ' · ' + esc(e.account) : ''}</span></div>
     <span class="num" style="font-size:16px;font-weight:600;color:${inc ? 'var(--accent)' : 'inherit'}">${inc ? '+' : '-'}${fmtMoney(e.amount, false)}</span>
   </button>`;
 }
@@ -274,38 +304,69 @@ function setDraftType(t) {
   draft = { ...newDraft(t), ...keep }; route();
 }
 function pickCat(id) { draft.cat = id; closeSheet(); route(); }
-function openAllCats() {
-  sheet(`<span style="font-weight:800;font-size:18px">Tutte le categorie</span>
-    <div class="row" style="flex-wrap:wrap;gap:8px">${topCats(draft.type).map(c => `<button class="chip ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`).join('')}</div>`);
+let pickerGroup = null, pickerQ = '';
+function openCatPicker() {
+  pickerQ = ''; pickerGroup = draft.type === 'expense' && draft.cat ? groupOf(catById(draft.cat)) : null;
+  sheet(`<div class="row between"><span style="font-weight:800;font-size:18px">Categoria</span><button class="chip" onclick="closeSheet()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
+    <div class="search-box">${svg('search', 18)}<input id="cat-q" type="search" placeholder="Cerca una categoria" autocomplete="off" oninput="pickerQ=this.value;$('#cat-body').innerHTML=catPickerBody()"></div>
+    <div id="cat-body" class="col" style="gap:16px">${catPickerBody()}</div>`);
+}
+function catPickerBody() {
+  const type = draft.type, list = topCats(type), q = pickerQ.trim().toLowerCase();
+  const chip = c => `<button class="chip ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`;
+  const wrap = cs => `<div class="row" style="flex-wrap:wrap;gap:8px">${cs.map(chip).join('')}</div>`;
+  const add = (label, g) => `<button class="chip" style="color:var(--accent);border-style:dashed" onclick="addCategory('${g || ''}', true, '${esc(pickerQ.trim()).replace(/'/g, '&#39;')}')">${svg('plus', 16, 2.5)} ${esc(label)}</button>`;
+  if (q) {
+    const hits = list.filter(c => c.name.toLowerCase().includes(q) || (c.aliases || []).some(x => x.toLowerCase().includes(q)) || (type === 'expense' && groupById(groupOf(c)).name.toLowerCase().includes(q)));
+    return `${hits.length ? wrap(hits) : '<span class="muted small">Nessuna categoria trovata.</span>'}<div>${add(`Crea "${pickerQ.trim()}"`)}</div>`;
+  }
+  const recent = `<div class="col" style="gap:8px"><span class="small muted">Usate più spesso</span>${wrap(list.slice(0, 6))}</div>`;
+  if (type !== 'expense' || list.length <= 10) return `${recent}${list.length > 6 ? `<div class="col" style="gap:8px"><span class="small muted">Tutte</span>${wrap(list.slice(6))}</div>` : ''}<div>${add('Nuova categoria')}</div>`;
+  const groups = CAT_GROUPS.map(g => ({ g, cs: list.filter(c => groupOf(c) === g.id) })).filter(x => x.cs.length);
+  return `${recent}<div class="list">${groups.map(({ g, cs }) => { const open = pickerGroup === g.id; return `
+    <div class="col">
+      <button class="item" style="padding:10px 12px" onclick="pickerGroup=pickerGroup==='${g.id}'?null:'${g.id}';$('#cat-body').innerHTML=catPickerBody()" aria-expanded="${open}">
+        <span class="tile" style="background:${hexA(g.color, .16)};color:${g.color};width:36px;height:36px">${svg(g.icon, 18)}</span>
+        <span class="grow" style="font-weight:700">${g.name}</span><span class="small muted">${cs.length}</span>
+        <span style="color:var(--muted)">${svg(open ? 'up' : 'down', 18, 2.5)}</span>
+      </button>
+      ${open ? `<div class="row" style="flex-wrap:wrap;gap:8px;padding:10px 0 14px">${cs.map(chip).join('')}${add('Nuova', g.id)}</div>` : ''}
+    </div>`; }).join('')}</div>`;
 }
 function viewAggiungi(args) {
   if (!draft || (draft.id && args[0] !== 'edit')) draft = newDraft();
   const [int, dec = '00'] = draft.amountStr.split(',');
-  const all = topCats(draft.type); let shown = all.slice(0, 11);
-  if (draft.cat && !shown.some(c => c.id === draft.cat)) { const sel = all.find(c => c.id === draft.cat); if (sel) shown = [...shown.slice(0, 10), sel]; }
-  const hasMore = all.length > shown.length;
+  const all = topCats(draft.type), sel = all.find(c => c.id === draft.cat);
+  let quick = all.slice(0, 8); if (sel && !quick.includes(sel)) quick = [sel, ...quick.slice(0, 7)];
   return `
     <div class="row between">
       <button class="chip" onclick="draft=null;history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button>
-      <span style="font-weight:800">${draft.id ? 'Modifica' : 'Nuovo movimento'}</span>
-      <button class="chip" style="color:var(--accent)" onclick="go('#scan')" aria-label="Scansiona scontrino">${svg('scan', 18)} Scansiona</button>
+      <div class="segmented"><button class="${draft.type === 'expense' ? 'on' : ''}" onclick="setDraftType('expense')">Spesa</button><button class="${draft.type === 'income' ? 'on' : ''}" onclick="setDraftType('income')">Entrata</button></div>
+      ${draft.id ? `<button class="chip" style="color:var(--danger)" onclick="deleteExpense('${draft.id}')" aria-label="Elimina movimento">${svg('trash', 18)}</button>`
+        : `<button class="chip" style="color:var(--accent)" onclick="go('#scan')" aria-label="Scansiona scontrino">${svg('scan', 18)}</button>`}
     </div>
-    <div class="segmented" style="align-self:center"><button class="${draft.type === 'expense' ? 'on' : ''}" onclick="setDraftType('expense')">Spesa</button><button class="${draft.type === 'income' ? 'on' : ''}" onclick="setDraftType('income')">Entrata</button></div>
-    <div class="col" style="align-items:center;gap:6px">
-      <div class="amount-input num"><span class="cur">€</span><span class="big">${fmtInt(int || 0)}</span><span class="cents">,${(dec + '00').slice(0, 2)}</span></div>
-      <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center">
-        ${S.accounts.length ? `<select style="width:auto;min-height:36px;padding:6px 12px" onchange="draft.account=this.value">${S.accounts.map(a => `<option ${a === draft.account ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>` : ''}
-        <input type="date" value="${draft.date}" style="width:auto;min-height:36px;padding:6px 12px" onchange="draft.date=this.value">
+    <div class="amount-input num"><span class="cur">€</span><span class="big">${fmtInt(int || 0)}</span><span class="cents">,${(dec + '00').slice(0, 2)}</span></div>
+    <div class="row" style="gap:8px;justify-content:center">
+      ${S.accounts.length ? `<select class="mini" onchange="draft.account=this.value" aria-label="Conto">${S.accounts.map(a => `<option ${a === draft.account ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>` : ''}
+      <input class="mini" type="date" value="${draft.date}" onchange="draft.date=this.value" aria-label="Data">
+    </div>
+    <div class="col" style="gap:8px">
+      <button class="cat-current" onclick="openCatPicker()" aria-label="Scegli la categoria">
+        ${sel ? `<span class="tile" style="background:${hexA(sel.color, .16)};color:${sel.color};width:36px;height:36px">${svg(sel.icon, 18)}</span>
+          <span class="col grow" style="gap:0;text-align:left;min-width:0"><span class="truncate" style="font-weight:700">${esc(sel.name)}</span>${draft.type === 'expense' ? `<span class="small muted truncate">${groupById(groupOf(sel)).name}</span>` : ''}</span>`
+          : `<span class="grow muted" style="text-align:left">Scegli la categoria</span>`}
+        <span class="small" style="color:var(--accent);flex-shrink:0">${svg('search', 16)} Cambia</span>
+      </button>
+      <div class="hscroll cat-strip">${quick.map(c => `<button class="chip ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span><span class="truncate">${esc(c.name)}</span></button>`).join('')}</div>
+    </div>
+    <input class="mini-note" type="text" placeholder="Nota (facoltativa)" value="${esc(draft.note)}" oninput="draft.note=this.value">
+    <div class="add-bottom">
+      <div class="keypad">
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="key('${n}')">${n}</button>`).join('')}
+        <button onclick="key(',')">,</button><button onclick="key('0')">0</button><button onclick="key('del')" aria-label="Cancella">${svg('del', 26)}</button>
       </div>
-    </div>
-    <div class="cat-grid">${shown.map(c => `<button class="cat-btn ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span style="color:${c.color}">${svg(c.icon, 22)}</span><span class="cat-name">${esc(c.name)}</span></button>`).join('')}${hasMore ? `<button class="cat-btn" style="border-style:dashed;border-color:var(--surface-3)" onclick="openAllCats()"><span style="color:var(--muted)">${svg('plus', 22)}</span><span>Altre</span></button>` : ''}</div>
-    <input type="text" placeholder="Nota (facoltativa)" value="${esc(draft.note)}" oninput="draft.note=this.value">
-    <div class="keypad">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="key('${n}')">${n}</button>`).join('')}
-      <button onclick="key(',')">,</button><button onclick="key('0')">0</button><button onclick="key('del')" aria-label="Cancella">${svg('del', 26)}</button>
-    </div>
-    <button class="btn primary sticky-save" onclick="saveDraft()">${svg('check', 20, 3)} ${draft.id ? 'Salva modifiche' : 'Salva'}</button>
-    ${draft.id ? `<button class="btn danger" onclick="deleteExpense('${draft.id}')">Elimina</button>` : ''}`;
+      <button class="btn primary" onclick="saveDraft()">${svg('check', 20, 3)} ${draft.id ? 'Salva modifiche' : 'Salva'}</button>
+    </div>`;
 }
 function key(k) {
   if (navigator.vibrate) navigator.vibrate(8);
@@ -753,7 +814,7 @@ const Drive = {
     const c = await (await this.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', body })).json();
     S.meta.driveFileId = c.id; return c.id;
   },
-  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts }; },
+  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps }; },
   mergeArr(local, remote) {
     const m = new Map(); [...local, ...remote].forEach(x => { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); });
     return [...m.values()];
@@ -770,8 +831,9 @@ const Drive = {
         S.categories = this.mergeArr(S.categories, remote.categories || []);
         S.habits = this.mergeArr(S.habits, remote.habits || []);
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
+        ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
         if ((remote.categories || []).length) dropPristineDefaults();
-        normalizeHabits();
+        normalizeHabits(); postPlanned();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
       }
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.payload()) });
@@ -790,6 +852,7 @@ function det(id, title, body, dflt = false) {
   return `<details ${open ? 'open' : ''} ontoggle="openSecs['${id}']=this.open"><summary>${title}</summary><div>${body}</div></details>`;
 }
 let catKindView = 'expense';
+const catSettingsRow = (c, counts) => `<button class="item" style="padding:10px 12px" onclick="editCategory('${c.id}')"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:36px;height:36px">${svg(c.icon, 18)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(c.name)}</span><span class="small muted">${counts[c.id] || 0} movimenti${c.excluded ? ' · non conta nelle spese' : ''}</span></div><span class="small muted num">${c.budget ? fmtInt(c.budget) + ' €' : ''}</span></button>`;
 function viewSettings() {
   const s = S.settings, p = AI.providers[s.aiProvider] || AI.providers.custom;
   const gdrive = `
@@ -805,9 +868,10 @@ function viewSettings() {
   const catList = cats(catKindView).sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0) || a.name.localeCompare(b.name));
   const categories = `
       <div class="segmented" style="align-self:flex-start"><button class="${catKindView === 'expense' ? 'on' : ''}" onclick="catKindView='expense';route()">Spese</button><button class="${catKindView === 'income' ? 'on' : ''}" onclick="catKindView='income';route()">Entrate</button></div>
-      <div class="list">${catList.map(c => `<button class="item" style="padding:10px 12px" onclick="editCategory('${c.id}')"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:36px;height:36px">${svg(c.icon, 18)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(c.name)}</span><span class="small muted">${counts[c.id] || 0} movimenti${c.excluded ? ' · non conta nelle spese' : ''}</span></div><span class="small muted num">${c.budget ? fmtInt(c.budget) + ' €' : ''}</span></button>`).join('') || '<div class="empty">Nessuna categoria.</div>'}</div>
+      ${catKindView === 'expense' ? CAT_GROUPS.map(g => { const cs = catList.filter(c => groupOf(c) === g.id); return cs.length ? `<div class="col" style="gap:6px"><span class="small muted row" style="gap:6px"><span style="color:${g.color}">${svg(g.icon, 14)}</span>${g.name}</span><div class="list">${cs.map(c => catSettingsRow(c, counts)).join('')}</div></div>` : ''; }).join('') : `<div class="list">${catList.map(c => catSettingsRow(c, counts)).join('')}</div>`}
+      ${catList.length ? '' : '<div class="empty">Nessuna categoria.</div>'}
       <button class="btn sm" onclick="addCategory()">${svg('plus', 16, 2.5)} Nuova categoria</button>
-      <span class="hint">Tocca una categoria per cambiare nome, impostare il budget mensile, escluderla dal totale delle spese (utile per gli investimenti) o unirla a un'altra.</span>`;
+      <span class="hint">Tocca una categoria per cambiarle gruppo e nome, impostare il budget mensile, escluderla dal totale delle spese (utile per gli investimenti) o unirla a un'altra.</span>`;
   const data = `
       <button class="btn sm" onclick="go('#importa')">Importa dati (Wallet, log, backup)</button>
       <button class="btn sm" onclick="exportJSON()">Esporta backup completo (JSON)</button>
@@ -820,6 +884,8 @@ function viewSettings() {
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
     ${det('data', 'Dati e importazione', data, true)}
     ${det('cats', 'Categorie e budget', categories)}
+    ${det('plan', 'Pagamenti pianificati', `<button class="btn sm" onclick="go('#pianificati')">${svg('repeat', 18)} Gestisci i pagamenti pianificati</button><span class="hint">${live(S.planned).filter(p => p.active !== false).length} attivi. Si registrano da soli alla data di scadenza.</span>`)}
+    ${det('pf', 'Portafoglio e prezzi', portfolioSettings())}
     ${det('lock', 'Blocco app', lockSection())}
     ${det('gdrive', 'Google Drive', gdrive)}
     ${det('ai', 'Lettura scontrini con AI', ai, !AI.configured())}
@@ -833,11 +899,15 @@ function editCategory(id) {
     <div class="field"><label>Nome</label><input id="c-name" value="${esc(c.name)}"></div>
     ${kind === 'expense' ? `<div class="field"><label>Budget mensile (€)</label><input id="c-budget" type="number" min="0" inputmode="decimal" value="${c.budget || ''}" placeholder="Nessun budget"></div>
     <label class="row" style="gap:12px;cursor:pointer"><input type="checkbox" id="c-excl" ${c.excluded ? 'checked' : ''} style="width:24px;min-height:24px;padding:0"><span style="font-size:14px;line-height:1.4">Non conta nel totale delle spese (per esempio gli investimenti)</span></label>` : ''}
+    ${kind === 'expense' ? groupField(groupOf(c)) : ''}
     ${catStyleFields(c)}
     <button class="btn primary" onclick="saveCategory('${id}')">Salva</button>
     ${others.length ? `<div class="field"><label>Unisci in un'altra categoria</label><select id="c-merge"><option value="">Scegli la categoria di destinazione</option>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><span class="hint">I ${n} movimenti passano alla categoria scelta e questa viene rimossa.</span></div>
     <button class="btn" onclick="mergeCategory('${id}')">Unisci</button>` : ''}
     ${n === 0 ? `<button class="btn danger" onclick="removeCategory('${id}')">Elimina categoria</button>` : `<span class="hint">Per eliminare una categoria che ha movimenti, uniscila prima in un'altra.</span>`}`);
+}
+function groupField(cur) {
+  return `<div class="field"><label>Gruppo</label><select id="c-group">${CAT_GROUPS.map(g => `<option value="${g.id}" ${g.id === cur ? 'selected' : ''}>${g.name}</option>`).join('')}</select><span class="hint">Serve a ritrovarla velocemente quando registri una spesa.</span></div>`;
 }
 function catStyleFields(c) {
   return `<div class="field"><label>Icona</label><div class="row" style="flex-wrap:wrap;gap:8px">${CAT_ICONS.map(ic => `<button class="chip ${ic === c.icon ? 'on' : ''}" data-icon="${ic}" onclick="pick(this)" aria-label="${ic}">${svg(ic, 18)}</button>`).join('')}</div></div>
@@ -846,6 +916,7 @@ function catStyleFields(c) {
 function saveCategory(id) {
   const c = catById(id), name = $('#c-name').value.trim(); if (!name) return toast('Il nome non può essere vuoto');
   if (name !== c.name) c.aliases = [...new Set([...(c.aliases || []), c.name])];
+  if ($('#c-group')) c.group = $('#c-group').value;
   c.name = name; if ($('#c-budget')) c.budget = Math.max(0, Number($('#c-budget').value) || 0); if ($('#c-excl')) c.excluded = $('#c-excl').checked;
   c.icon = $('#sheet .chip.on[data-icon]')?.dataset.icon || c.icon; c.color = $('#sheet .chip.on[data-color]')?.dataset.color || c.color;
   c.updatedAt = Date.now(); save(); closeSheet(); route();
@@ -859,21 +930,27 @@ function mergeCategory(id) {
   from.deleted = true; from.updatedAt = now; save(); closeSheet(); toast('Categorie unite'); route();
 }
 function removeCategory(id) { const c = catById(id); c.deleted = true; c.updatedAt = Date.now(); save(); closeSheet(); route(); }
-function addCategory() {
-  const c = { color: PALETTE[S.categories.length % PALETTE.length], icon: 'tag' };
-  sheet(`<span style="font-weight:800;font-size:18px">Nuova categoria ${catKindView === 'income' ? 'di entrata' : 'di spesa'}</span>
-    <div class="field"><label>Nome</label><input id="c-name" placeholder="Es. Animali"></div>
-    ${catKindView === 'expense' ? `<div class="field"><label>Budget mensile (€)</label><input id="c-budget" type="number" min="0" inputmode="decimal" placeholder="Nessun budget"></div>` : ''}
+// forDraft: creata dal selettore durante l'inserimento di una spesa, che la usa subito.
+function addCategory(group, forDraft, name = '') {
+  const kind = forDraft ? draft.type : catKindView, g = group ? groupById(group) : null;
+  const c = { color: g ? g.color : PALETTE[S.categories.length % PALETTE.length], icon: g ? g.icon : 'tag' };
+  sheet(`<span style="font-weight:800;font-size:18px">Nuova categoria ${kind === 'income' ? 'di entrata' : 'di spesa'}</span>
+    <div class="field"><label>Nome</label><input id="c-name" value="${esc(name)}" placeholder="Es. Animali"></div>
+    ${kind === 'expense' ? groupField(group || 'altro') : ''}
+    ${kind === 'expense' && !forDraft ? `<div class="field"><label>Budget mensile (€)</label><input id="c-budget" type="number" min="0" inputmode="decimal" placeholder="Nessun budget"></div>` : ''}
     ${catStyleFields(c)}
-    <button class="btn primary" onclick="createCategory()">Aggiungi</button>`);
+    <button class="btn primary" onclick="createCategory(${forDraft ? 'true' : 'false'})">Aggiungi</button>`);
 }
-function createCategory() {
-  const name = $('#c-name').value.trim(); if (!name) return toast('Dai un nome alla categoria');
-  if (findCategory(name, catKindView)) return toast('Esiste già una categoria con questo nome');
-  const c = ensureCategory(name, catKindView);
+function createCategory(forDraft) {
+  const kind = forDraft ? draft.type : catKindView, name = $('#c-name').value.trim(); if (!name) return toast('Dai un nome alla categoria');
+  if (findCategory(name, kind)) return toast('Esiste già una categoria con questo nome');
+  const c = ensureCategory(name, kind);
   c.icon = $('#sheet .chip.on[data-icon]')?.dataset.icon || c.icon; c.color = $('#sheet .chip.on[data-color]')?.dataset.color || c.color;
+  if ($('#c-group')) c.group = $('#c-group').value;
   if ($('#c-budget')) c.budget = Math.max(0, Number($('#c-budget').value) || 0);
-  c.updatedAt = Date.now(); save(); closeSheet(); route();
+  c.updatedAt = Date.now(); save(); closeSheet();
+  if (forDraft) draft.cat = c.id;
+  route();
 }
 function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function exportJSON() { download(`spese-backup-${todayISO()}.json`, JSON.stringify(Drive.payload(), null, 2), 'application/json'); }
@@ -990,6 +1067,7 @@ function applyPlan(plan) {
     S.expenses = Drive.mergeArr(S.expenses, b.expenses || []);
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
+    ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
     S.accounts = [...new Set([...S.accounts, ...(b.accounts || [])])];
     res.exp += (b.expenses || []).length; res.logs += (b.habitLogs || []).length; res.habits += (b.habits || []).length;
   });
@@ -1157,10 +1235,17 @@ function lockDisableSheet() {
 async function lockDisable() { if (!(await Lock.check($('#l-cur').value))) return toast('PIN errato'); Lock.put(null); closeSheet(); toast('Blocco disattivato'); route(); }
 
 // ---------- Avvio ----------
-applyTheme();
-Lock.init();
-normalizeHabits();
-route();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.addEventListener('load', () => { setTimeout(() => { if (S.settings.clientId) Drive.sync().catch(() => {}); }, 1200); });
-window.addEventListener('online', () => { if (S.settings.clientId) Drive.sync().catch(() => {}); });
+// Chiamata da boot.js dopo che tutti i moduli sono stati caricati.
+function boot() {
+  applyTheme();
+  Lock.init();
+  normalizeHabits();
+  seedPlanned();
+  postPlanned();
+  snapshotPortfolio();
+  route();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  window.addEventListener('load', () => { setTimeout(() => { if (S.settings.clientId) Drive.sync().catch(() => {}); }, 1200); });
+  window.addEventListener('online', () => { if (S.settings.clientId) Drive.sync().catch(() => {}); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !Lock.locked && postPlanned()) route(); });
+}
