@@ -124,7 +124,7 @@ function viewPortfolio() {
   const last = Math.max(0, ...holdingsLive().map(h => h.priceAt || 0));
   return `
     <div class="row between"><span class="title">Portafoglio</span>
-      <div class="row" style="gap:8px"><button class="chip" onclick="pfRefresh()" aria-label="Aggiorna i prezzi">${svg('repeat', 18)}</button><button class="chip" style="color:var(--accent)" onclick="holdingEdit()" aria-label="Aggiungi strumento">${svg('plus', 18, 2.5)}</button></div></div>
+      <div class="row" style="gap:8px"><button class="chip" onclick="pfRefresh()" aria-label="Aggiorna i prezzi">${svg('repeat', 18)}</button><button class="chip" style="color:var(--accent)" onclick="holdingEdit()" aria-label="Aggiungi strumento">${svg('plus', 18, 2.5)}</button>${gearBtn()}</div></div>
     ${holdingsLive().length ? `
     <div class="col" style="gap:6px">
       <span class="small muted">Valore del portafoglio</span>
@@ -139,6 +139,7 @@ function viewPortfolio() {
     ${items.length ? `<div class="card col" style="gap:14px"><div class="row between"><span style="font-weight:800">Allocazione</span><div class="segmented"><button class="${pfMode === 'strumenti' ? 'on' : ''}" onclick="pfMode='strumenti';route()">Strumenti</button><button class="${pfMode === 'tipo' ? 'on' : ''}" onclick="pfMode='tipo';route()">Tipo</button></div></div>
       <div class="row" style="gap:18px"><div class="donut-wrap">${donutSvg(items)}<div class="donut-center"><span class="small muted">${items.length}</span><span class="small muted">${pfMode === 'tipo' ? 'tipi' : 'strumenti'}</span></div></div>
       <div class="legend">${items.map(g => `<div class="row"><span class="dot" style="background:${g.color}"></span><span class="grow truncate" style="font-weight:700">${esc(g.label)}</span><span class="muted small">${Math.round(g.value / T.value * 100)}%</span></div>`).join('')}</div></div></div>` : ''}
+    ${balanceCard()}
     <div class="col" style="gap:12px"><span class="section-title">Strumenti</span><div class="list">${open.map(pfHoldingRow).join('') || '<div class="empty">Nessuna posizione aperta.</div>'}</div></div>
     ${closed.length ? `<div class="col" style="gap:12px"><span class="section-title">Chiusi</span><div class="list">${closed.map(pfHoldingRow).join('')}</div></div>` : ''}`
     : `<div class="empty">Nessuno strumento ancora.<br>Tocca + per aggiungere un ETF, un'azione o una cripto cercandolo per ISIN o ticker, poi registra gli acquisti.</div>`}`;
@@ -208,7 +209,7 @@ function holdingSheet(id) {
     </div>
     <div class="row" style="gap:8px"><input id="h-quick" type="number" step="0.0001" inputmode="decimal" placeholder="Nuovo prezzo €" style="min-height:44px"><button class="chip on" style="flex-shrink:0" onclick="holdingQuickPrice('${id}')">Salva prezzo</button>${h.symbol ? `<button class="chip" style="flex-shrink:0" onclick="holdingRefreshOne('${id}')" aria-label="Aggiorna online">${svg('repeat', 16)}</button>` : ''}</div>
     <div class="row" style="gap:8px"><button class="btn sm primary" onclick="tradeSheet('${id}','buy')">Acquisto</button><button class="btn sm" onclick="tradeSheet('${id}','sell')">Vendita</button><button class="btn sm" onclick="tradeSheet('${id}','div')">Dividendo</button></div>
-    ${trs.length ? `<div class="col" style="gap:8px"><span class="section-title" style="font-size:15px">Operazioni</span><div class="list">${trs.map(t => `<button class="item" style="padding:10px 12px" onclick="tradeSheet('${id}','${t.kind}','${t.id}')"><div class="col grow"><span style="font-weight:700">${TRADE_LABEL[t.kind]}${t.opening ? ' · apertura' : ''}</span><span class="small muted">${dayFmt(t.date)}${t.kind === 'div' ? '' : ' · ' + fmtQty(t.qty) + ' × ' + fmtMoney(t.price)}</span></div><span class="num" style="font-weight:600">${fmtMoney(t.kind === 'div' ? t.amount : t.qty * t.price, false)}</span></button>`).join('')}</div></div>` : ''}
+    ${trs.length ? `<div class="col" style="gap:8px"><span class="section-title" style="font-size:15px">Operazioni</span><div class="list">${trs.map(t => `<button class="item" style="padding:10px 12px" onclick="tradeSheet('${id}','${t.kind}','${t.id}')"><div class="col grow"><span style="font-weight:700">${TRADE_LABEL[t.kind]}${t.opening ? ' · apertura' : ''}${t.estimated ? ' · stimata' : ''}</span><span class="small muted">${dayFmt(t.date)}${t.kind === 'div' ? '' : ' · ' + fmtQty(t.qty) + ' × ' + fmtMoney(t.price)}</span></div><span class="num" style="font-weight:600">${fmtMoney(t.kind === 'div' ? t.amount : t.qty * t.price, false)}</span></button>`).join('')}</div></div>` : ''}
     <button class="btn" onclick="holdingEdit('${id}')">Modifica strumento</button>
     <button class="btn danger" onclick="holdingDelete('${id}')">Elimina strumento e operazioni</button>`);
 }
@@ -273,8 +274,80 @@ function tradeDelete() {
 }
 
 // ---------- Impostazioni ----------
+// ---------- Bilanciamento (azionario / obbligazionario) ----------
+// Stesse regole dell'artefatto "Allocazione Trade Republic": fascia obiettivo sull'azionario,
+// si ribilancia solo spostando gli importi dei PAC, mai vendendo.
+const assetClass = h => (h.type === 'obbligazione' ? 'bond' : h.type === 'etf' || h.type === 'azione' ? 'eq' : null);
+const balTarget = () => { const t = S.settings.target || {}; const lo = Number(t.lo) || 75, hi = Number(t.hi) || 80; return { lo: lo / 100, hi: hi / 100, mid: (lo + hi) / 200 }; };
+// Importo mensile del PAC collegato a ogni strumento (pagamenti pianificati attivi).
+function pacOf(hid) { return plannedAll().filter(p => p.active !== false && p.holdingId === hid).reduce((a, p) => a + plannedMonthly(p), 0); }
+function balanceData() {
+  const rows = holdingsLive().map(h => ({ h, cls: assetClass(h), value: position(h).value, pac: pacOf(h.id) })).filter(r => r.cls && (r.value > 0 || r.pac > 0));
+  const sum = (k, f) => rows.filter(f).reduce((a, r) => a + r[k], 0);
+  const T = { rows, eq: sum('value', r => r.cls === 'eq'), bond: sum('value', r => r.cls === 'bond'), M: sum('pac', () => true) };
+  T.tot = T.eq + T.bond; T.eqPct = T.tot ? T.eq / T.tot : 0;
+  const nexts = plannedAll().filter(p => p.active !== false && p.holdingId).map(p => nextOccurrence(p)).filter(Boolean).sort();
+  T.next = nexts[0] || null; return T;
+}
+// Divide un importo tra gli strumenti di una classe in proporzione ai PAC attuali (in parti uguali se nessuno ha un PAC).
+function balSplit(T, cls, amount) {
+  const pool = T.rows.filter(r => r.cls === cls), base = pool.reduce((a, r) => a + r.pac, 0), withPac = pool.filter(r => r.pac > 0);
+  const use = base > 0 ? withPac : pool;
+  return use.map(r => ({ r, amount: amount * (base > 0 ? r.pac / base : 1 / use.length) }));
+}
+function balAlloc(T, eqAmt, bondAmt) {
+  // Arrotonda all'euro senza perdere il totale: lo scarto va allo strumento con l'importo più alto.
+  const list = [...balSplit(T, 'eq', eqAmt), ...balSplit(T, 'bond', bondAmt)].map(x => ({ ...x, amount: Math.round(x.amount) }));
+  const diff = Math.round(eqAmt + bondAmt) - list.reduce((a, x) => a + x.amount, 0);
+  if (diff && list.length) list.reduce((m, x) => (x.amount > m.amount ? x : m)).amount += diff;
+  return list.map(({ r, amount }) => {
+    const d = amount - r.pac;
+    return `<div class="row between small" style="border-bottom:1px dotted var(--line);padding-bottom:6px"><span class="truncate">${esc(r.h.name)}</span><span class="num" style="font-weight:700;white-space:nowrap">${fmtMoney(amount).replace(',00', '')} <span class="muted" style="font-weight:500">${Math.abs(d) < 1 ? 'invariato' : 'da ' + fmtMoney(r.pac).replace(',00', '')}</span></span></div>`;
+  }).join('');
+}
+function balanceCard() {
+  const T = balanceData(), { lo, hi, mid } = balTarget();
+  if (!T.tot) return '';
+  const inBand = T.eqPct >= lo && T.eqPct <= hi, p1 = x => (x * 100).toFixed(1).replace('.', ',') + '%';
+  const X = p => Math.max(0, Math.min(100, (p * 100 - 50) * 2)); // scala 50–100%
+  const status = inBand ? 'Dentro la fascia' : `${T.eqPct > hi ? 'Sopra il tetto' : 'Sotto la soglia'} · ${(((T.eqPct > hi ? T.eqPct - hi : lo - T.eqPct)) * 100).toFixed(1).replace('.', ',')} punti`;
+  const M = T.M, nextLbl = T.next ? dayFmt(T.next) : 'prossimo versamento';
+  let recovery = '';
+  if (M > 0 && !inBand) {
+    const toBond = Math.max(0, Math.min(M, T.eq + M - mid * (T.tot + M))), toEq = M - toBond, after = (T.eq + toEq) / (T.tot + M), ok = after >= lo && after <= hi;
+    recovery = `<div class="col" style="gap:10px;padding:14px;border-radius:var(--r-m);border:1px solid var(--warn);background:${hexA('#FFB36B', .08)}">
+      <div class="col" style="gap:2px"><span class="small muted">Una tantum</span><span style="font-weight:800">Recupero: versamento del ${nextLbl}</span></div>
+      <span class="small muted" style="line-height:1.45">${ok ? 'Concentra il versamento di questo mese per rientrare nella fascia in un colpo solo.' : 'Un solo mese non basta a rientrare: sposta tutto da una parte e ricontrolla il mese prossimo.'}</span>
+      ${balAlloc(T, toEq, toBond)}
+      <span class="small" style="border-top:1px solid var(--line);padding-top:8px">Dopo il versamento: azionario <b class="num">${p1(after)}</b>${ok ? ', dentro la fascia.' : ', ancora fuori: si ricontrolla.'}</span>
+    </div>`;
+  }
+  const twice = T.eq / (T.tot + 2 * M);
+  return `<div class="card col" style="gap:14px">
+    <div class="row between" style="flex-wrap:wrap;gap:8px"><span style="font-weight:800">Bilanciamento</span><span class="chip" style="height:30px;font-size:12px;color:${inBand ? 'var(--accent)' : 'var(--warn)'};border-color:currentColor">${status}</span></div>
+    <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap"><span class="num" style="font-size:34px;font-weight:700;line-height:1">${p1(T.eqPct)}</span><span class="small muted">azionario · ${p1(1 - T.eqPct)} obbligazionario</span></div>
+    <div class="col" style="gap:4px">
+      <div style="position:relative;height:28px;border-radius:6px;background:var(--surface-2);overflow:hidden">
+        <div style="position:absolute;top:0;bottom:0;left:${X(lo)}%;width:${X(hi) - X(lo)}%;background:${hexA('#6EE7B7', .28)}"></div>
+        <div style="position:absolute;top:0;bottom:0;width:3px;border-radius:2px;left:calc(${X(T.eqPct)}% - 1.5px);background:${inBand ? 'var(--text)' : 'var(--warn)'}"></div>
+      </div>
+      <div class="row between small muted num"><span>50%</span><span>${Math.round(lo * 100)}–${Math.round(hi * 100)}%</span><span>100%</span></div>
+    </div>
+    ${M > 0 ? `${inBand ? `<span class="small muted">Nessun recupero necessario: l'allocazione è già nella fascia. Prossimo versamento: ${nextLbl}.</span>` : recovery}
+    <div class="col" style="gap:10px">
+      <div class="col" style="gap:2px"><span class="small muted">Ogni mese${inBand ? '' : ', dopo il recupero'}</span><span style="font-weight:800">Split a regime: ${p1(mid).replace(',0%', '%')} / ${p1(1 - mid).replace(',0%', '%')}</span></div>
+      ${balAlloc(T, M * mid, M * (1 - mid))}
+      <span class="small muted">Mantiene l'azionario intorno al ${p1(mid)}, al centro della fascia.</span>
+    </div>
+    <span class="hint"><b>Attenzione:</b> non ripetere il recupero due mesi di fila. Due versamenti interamente sull'obbligazionario porterebbero l'azionario al ${p1(twice)}.</span>`
+      : '<span class="hint">Collega i pagamenti pianificati agli strumenti (campo "Piano di accumulo su") per avere i suggerimenti sui PAC.</span>'}
+    <span class="hint"><b>Mai vendere:</b> con ${fmtMoney(M).replace(',00', '')} al mese in ingresso i versamenti bastano a correggere la deriva; vendere farebbe pagare il 26% sulle plusvalenze. Cripto e strumenti "Altro" sono esclusi dal calcolo. Strumento di calcolo, non consulenza finanziaria.</span>
+  </div>`;
+}
+
 function portfolioSettings() {
   return `<div class="field"><label>Proxy per i prezzi (facoltativo)</label><input value="${esc(S.settings.proxyUrl || '')}" onchange="S.settings.proxyUrl=this.value.trim();save(false)" placeholder="https://tuo-worker.workers.dev/?url="><span class="hint">I prezzi di ETF e azioni vengono da Yahoo Finance, che il browser non può interrogare direttamente. Senza proxy uso un servizio pubblico che a volte non risponde: in quel caso inserisci il prezzo a mano. Per la massima affidabilità puoi creare un tuo proxy gratuito su Cloudflare con il codice nel file proxy-worker.js del progetto.</span></div>
+      <div class="field"><label>Fascia obiettivo azionario (%)</label><div class="row" style="gap:12px"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).lo || 75}" onchange="S.settings.target={...(S.settings.target||{}),lo:+this.value};save(false)" aria-label="Minimo"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).hi || 80}" onchange="S.settings.target={...(S.settings.target||{}),hi:+this.value};save(false)" aria-label="Massimo"></div><span class="hint">Usata dalla sezione Bilanciamento del Portafoglio. Il resto è obbligazionario.</span></div>
       <button class="btn sm" onclick="pfRefresh()">${svg('repeat', 18)} Aggiorna i prezzi ora</button>
       <button class="btn sm" onclick="go('#portafoglio')">${svg('trend', 18)} Apri il portafoglio</button>`;
 }

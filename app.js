@@ -180,8 +180,9 @@ function render(name, args) {
   renderNav(name);
   if (views[name].after) views[name].after(args);
 }
+const gearBtn = () => `<button class="chip" onclick="go('#impostazioni')" aria-label="Impostazioni">${svg('gear', 18)}</button>`;
 function renderNav(active) {
-  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary'], ['impostazioni', 'Impostazioni', 'gear']];
+  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary']];
   $('#nav').innerHTML = items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}</a>`
     : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('');
@@ -225,6 +226,7 @@ function viewHome() {
       </button>
       <div class="row" style="gap:10px">
         <span class="sync-dot ${Drive.state}" id="sync-dot" title="Stato sincronizzazione"></span>
+        ${gearBtn()}
       </div>
     </div>
     <div class="row between">
@@ -521,6 +523,7 @@ function viewAnalisi() {
       <div class="row" style="gap:8px">
         <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
         <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
+        ${gearBtn()}
       </div>
     </div>
     <div class="row between">
@@ -569,7 +572,7 @@ function viewDiario() {
   return `
     <div class="row between">
       <div class="col" style="gap:2px"><span class="title">Diario</span><span class="small muted">${fmtLong(diaryDate, { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
-      <button class="chip" style="color:var(--accent)" onclick="editHabit()">${svg('plus', 16, 2.5)} Attività</button>
+      <div class="row" style="gap:8px"><button class="chip" style="color:var(--accent)" onclick="editHabit()">${svg('plus', 16, 2.5)} Attività</button>${gearBtn()}</div>
     </div>
     <div class="row between">
       <button class="chip" onclick="diaryDate=addDays(diaryDate,-7);route()" aria-label="Settimana precedente">${svg('back', 14, 2.5)}</button>
@@ -880,16 +883,19 @@ function viewSettings() {
       <span class="hint">${live(S.expenses).length} movimenti, ${live(S.habitLogs).length} registrazioni di attività.</span>`;
   return `
     <div class="row between"><span class="title">Impostazioni</span><button class="chip" onclick="history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
-    <div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
+    <div class="settings">
+    ${det('prof', 'Profilo e aspetto', `<div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
-    ${det('data', 'Dati e importazione', data, true)}
+`)}
+    ${det('data', 'Dati e importazione', data)}
     ${det('cats', 'Categorie e budget', categories)}
     ${det('plan', 'Pagamenti pianificati', `<button class="btn sm" onclick="go('#pianificati')">${svg('repeat', 18)} Gestisci i pagamenti pianificati</button><span class="hint">${live(S.planned).filter(p => p.active !== false).length} attivi. Si registrano da soli alla data di scadenza.</span>`)}
     ${det('pf', 'Portafoglio e prezzi', portfolioSettings())}
     ${det('lock', 'Blocco app', lockSection())}
     ${det('gdrive', 'Google Drive', gdrive)}
-    ${det('ai', 'Lettura scontrini con AI', ai, !AI.configured())}
-    ${det('acc', 'Conti', `<input value="${esc(S.accounts.join(', '))}" onchange="S.accounts=this.value.split(',').map(x=>x.trim()).filter(Boolean);save()"><span class="hint">Separati da virgola.</span>`)}`;
+    ${det('ai', 'Lettura scontrini con AI', ai)}
+    ${det('acc', 'Conti', `<input value="${esc(S.accounts.join(', '))}" onchange="S.accounts=this.value.split(',').map(x=>x.trim()).filter(Boolean);save()"><span class="hint">Separati da virgola.</span>`)}
+    </div>`;
 }
 function editCategory(id) {
   const c = catById(id), kind = c.kind || 'expense', n = live(S.expenses).filter(e => e.cat === id).length;
@@ -1068,6 +1074,8 @@ function applyPlan(plan) {
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
     ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
+    // Pagamenti pianificati importati con il nome della categoria (es. dal file di Trade Republic): la risolve qui.
+    live(S.planned).forEach(p => { if (p.catName && catById(p.cat) === UNKNOWN_CAT) { let c = findCategory(p.catName, p.type); if (!c) { c = ensureCategory(p.catName, p.type); if (p.catExcluded) c.excluded = true; } p.cat = c.id; } if (p.account && !S.accounts.includes(p.account)) S.accounts.push(p.account); });
     S.accounts = [...new Set([...S.accounts, ...(b.accounts || [])])];
     res.exp += (b.expenses || []).length; res.logs += (b.habitLogs || []).length; res.habits += (b.habits || []).length;
   });

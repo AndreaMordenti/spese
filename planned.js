@@ -31,6 +31,7 @@ function postPlanned() {
     occurrences(p, floor, today).forEach(d => {
       const id = `p-${p.id}-${d}`; if (have.has(id)) return; have.add(id);
       S.expenses.push({ id, type: p.type || 'expense', amount: Number(p.amount), cat: p.cat, note: p.name, date: d, time: '', account: p.account || '', source: 'planned', pid: p.id, updatedAt: Date.now() }); n++;
+      planTrade(p, d);
     });
   });
   if (n) { save(); toast(n === 1 ? 'Registrato 1 pagamento pianificato' : `Registrati ${n} pagamenti pianificati`, 3000); }
@@ -47,10 +48,20 @@ function upcomingPlanned(days) {
   plannedAll().forEach(p => { if (p.active !== false) occurrences(p, addDays(today, 1), addDays(today, days)).forEach(d => out.push({ p, d })); });
   return out.sort((a, b) => a.d.localeCompare(b.d) || a.p.name.localeCompare(b.p.name));
 }
+// Piano di accumulo: se il pagamento è collegato a uno strumento, registra anche l'acquisto.
+// Quote = importo / ultimo prezzo noto: è una stima, da correggere col prezzo reale dell'esecuzione.
+function planTrade(p, d) {
+  if (!p.holdingId || typeof holdingById !== 'function') return;
+  const h = holdingById(p.holdingId), id = `pt-${p.id}-${d}`;
+  if (!h || h.deleted || S.trades.some(t => t.id === id)) return;
+  const last = tradesOf(h.id).filter(t => t.kind === 'buy' && t.price > 0).pop(), price = Number(h.price) || (last && last.price) || 0;
+  if (!(price > 0)) return;
+  S.trades.push({ id, holdingId: h.id, kind: 'buy', date: d, qty: Math.round(Number(p.amount) / price * 1e6) / 1e6, price, fee: 0, estimated: true, pid: p.id, updatedAt: Date.now() });
+}
 function confirmPending(pid, d) {
   const p = S.planned.find(x => x.id === pid); if (!p) return;
   S.expenses.push({ id: `p-${pid}-${d}`, type: p.type || 'expense', amount: Number(p.amount), cat: p.cat, note: p.name, date: d, time: '', account: p.account || '', source: 'planned', pid, updatedAt: Date.now() });
-  save(); route();
+  planTrade(p, d); save(); route();
 }
 function skipPending(pid, d) { // tombstone: la scadenza non viene più proposta
   S.expenses.push({ id: `p-${pid}-${d}`, type: 'expense', amount: 0, cat: '', date: d, deleted: true, source: 'planned', pid, updatedAt: Date.now() }); save(); route();
@@ -93,7 +104,7 @@ function plannedRow(p) {
   const c = catById(p.cat), next = p.active === false ? null : nextOccurrence(p), inc = (p.type || 'expense') === 'income';
   return `<button class="item" onclick="editPlanned('${p.id}')" ${p.active === false ? 'style="opacity:.55"' : ''}>
     <div class="tile" style="background:${hexA(c.color, .16)};color:${c.color}">${svg(c.icon)}</div>
-    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(p.name)}</span><span class="small muted truncate">${plannedRepeat(p)}</span><span class="small truncate" style="color:${plannedIsMissing(p) ? 'var(--warn)' : 'var(--muted)'}">${p.active === false ? 'Sospeso' : plannedIsMissing(p) ? 'Importo da inserire' : next ? 'Prossimo: ' + dayFmt(next) : 'Concluso'}${p.auto === false ? ' · da confermare' : ''}</span></div>
+    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(p.name)}</span><span class="small muted truncate">${plannedRepeat(p)}${p.holdingId && typeof holdingById === 'function' && holdingById(p.holdingId) ? ' · PAC' : ''}</span><span class="small truncate" style="color:${plannedIsMissing(p) ? 'var(--warn)' : 'var(--muted)'}">${p.active === false ? 'Sospeso' : plannedIsMissing(p) ? 'Importo da inserire' : next ? 'Prossimo: ' + dayFmt(next) : 'Concluso'}${p.auto === false ? ' · da confermare' : ''}</span></div>
     <span class="num" style="font-size:16px;font-weight:600;color:${inc ? 'var(--accent)' : 'inherit'}">${inc ? '+' : ''}${fmtMoney(p.amount, false)}</span></button>`;
 }
 function viewPlanned() {
@@ -129,6 +140,7 @@ function editPlanned(id) {
     <div class="field"><label>Conto</label><select id="p-account">${[...new Set([...S.accounts, p.account].filter(Boolean))].map(a => `<option ${a === p.account ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></div>
     <div class="field"><label>Si ripete</label><select id="p-every">${[[1, 'Ogni mese'], [2, 'Ogni 2 mesi'], [3, 'Ogni 3 mesi'], [6, 'Ogni 6 mesi'], [12, 'Ogni anno']].map(([v, l]) => `<option value="${v}" ${v === Number(p.every) ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="row" style="gap:12px"><div class="field grow"><label>Dal</label><input id="p-start" type="date" value="${p.start}"></div><div class="field grow"><label>Fino al (facoltativo)</label><input id="p-end" type="date" value="${p.end || ''}"></div></div>
+    ${typeof holdingsLive === 'function' && holdingsLive().length ? `<div class="field"><label>Piano di accumulo su (facoltativo)</label><select id="p-holding"><option value="">Nessuno strumento</option>${holdingsLive().map(h => `<option value="${h.id}" ${h.id === p.holdingId ? 'selected' : ''}>${esc(h.name)}</option>`).join('')}</select><span class="hint">Alla scadenza aggiunge anche l'acquisto nel Portafoglio, con le quote stimate dall'ultimo prezzo.</span></div>` : ''}
     <label class="row" style="gap:12px;cursor:pointer"><input type="checkbox" id="p-auto" ${p.auto !== false ? 'checked' : ''} style="width:24px;min-height:24px;padding:0"><span style="font-size:14px;line-height:1.4">Registra da solo alla scadenza (altrimenti ti chiede conferma)</span></label>
     <button class="btn primary" onclick="savePlanned('${id || ''}')">Salva</button>
     ${id ? `<button class="btn" onclick="togglePlanned('${id}')">${p.active === false ? 'Riattiva' : 'Sospendi'}</button><button class="btn danger" onclick="deletePlanned('${id}')">Elimina</button>` : ''}`);
@@ -141,10 +153,11 @@ function savePlanned(id) {
   if (!(day >= 1 && day <= 31)) return toast('Il giorno deve essere tra 1 e 31');
   if (!start) return toast('Scegli la data di inizio');
   if (end && end < start) return toast('La data di fine è prima dell\'inizio');
-  const data = { name, amount, day, start, end, every: Number($('#p-every').value) || 1, type: $('#sheet .segmented .on')?.dataset.k || 'expense', cat: $('#p-cat').value, account: $('#p-account').value, auto: $('#p-auto').checked, updatedAt: Date.now() };
+  const data = { holdingId: $('#p-holding') ? $('#p-holding').value || null : p0(id), name, amount, day, start, end, every: Number($('#p-every').value) || 1, type: $('#sheet .segmented .on')?.dataset.k || 'expense', cat: $('#p-cat').value, account: $('#p-account').value, auto: $('#p-auto').checked, updatedAt: Date.now() };
   if (id) Object.assign(S.planned.find(x => x.id === id), data); else S.planned.push({ id: 'pl-' + uid(), active: true, ...data });
   save(); postPlanned(); closeSheet(); route();
 }
+const p0 = id => (id ? S.planned.find(x => x.id === id).holdingId || null : null);
 function togglePlanned(id) { const p = S.planned.find(x => x.id === id); p.active = p.active === false; p.updatedAt = Date.now(); save(); postPlanned(); closeSheet(); route(); }
 function deletePlanned(id) {
   if (!confirm('Eliminare questo pagamento pianificato? I movimenti già registrati restano.')) return;

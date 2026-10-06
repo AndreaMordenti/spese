@@ -226,13 +226,17 @@
   .field label { font-size: 12px; font-weight: 700; color: var(--muted); }
   .hint { font-size: 12px; color: var(--faint); line-height: 1.45; }
   details { border-radius: var(--r-l); background: var(--surface); border: var(--card-border); padding: 0 16px; }
-  details summary { padding: 16px 0; font-weight: 800; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details summary { padding: 14px 0; font-weight: 800; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
   details summary::-webkit-details-marker { display: none; }
   details summary::after { content: '+'; color: var(--muted); font-size: 20px; }
   details[open] summary::after { content: '–'; }
   details > div { display: flex; flex-direction: column; gap: 16px; padding: 0 0 18px; }
   :root[data-theme="minimal"] details { background: transparent; border: none; border-top: 1px solid var(--line); border-radius: 0; padding: 0; }
   :root[data-theme="minimal"] details summary { font-weight: 600; }
+
+  .settings { display: flex; flex-direction: column; gap: 8px; }
+  :root[data-theme="minimal"] .settings { gap: 0; }
+  :root[data-theme="minimal"] .settings details:last-child { border-bottom: 1px solid var(--line); }
 
   /* Sheet / toast */
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: none; align-items: flex-end; justify-content: center; }
