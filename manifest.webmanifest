@@ -1,7 +1,7 @@
 {
-  "name": "Spese",
-  "short_name": "Spese",
-  "description": "Tracking spese personali e diario attività, con dati sul tuo Google Drive",
+  "name": "Slow",
+  "short_name": "Slow",
+  "description": "Spese, investimenti e diario attività, con i dati sul tuo Google Drive",
   "id": "./",
   "start_url": "./index.html#analisi",
   "scope": "./",

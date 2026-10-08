@@ -1,4 +1,4 @@
-/* Spese: app personale di tracking spese e diario attività.
+/* Slow: app personale di tracking spese, investimenti e diario attività.
    Dati in locale (localStorage) e sincronizzati sulla cartella privata dell'app su Google Drive. */
 'use strict';
 
@@ -961,7 +961,7 @@ function createCategory(forDraft) {
   route();
 }
 function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
-function exportJSON() { download(`spese-backup-${todayISO()}.json`, JSON.stringify(Drive.payload(), null, 2), 'application/json'); }
+function exportJSON() { download(`slow-backup-${todayISO()}.json`, JSON.stringify(Drive.payload(), null, 2), 'application/json'); }
 function exportCSV() {
   const rows = [['data', 'ora', 'tipo', 'importo', 'categoria', 'nota', 'conto'], ...live(S.expenses).sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '')).map(e => [e.date, e.time || '', typeOf(e) === 'income' ? 'entrata' : 'spesa', String(e.amount).replace('.', ','), catById(e.cat).name, e.note || '', e.account || ''])];
   download(`movimenti-${todayISO()}.csv`, '\ufeff' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n'), 'text/csv');
@@ -1156,7 +1156,7 @@ const Lock = {
   async check(pin) { const c = this.cfg(); return !!c && (await this.hash(pin, c.salt)) === c.hash; },
   async enrollBio() {
     if (!window.PublicKeyCredential) throw new Error('questo browser non supporta la biometria');
-    const cred = await navigator.credentials.create({ publicKey: { challenge: this.rand(32), rp: { name: 'Spese' }, user: { id: this.rand(16), name: 'spese', displayName: 'Spese' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' }, timeout: 60000 } });
+    const cred = await navigator.credentials.create({ publicKey: { challenge: this.rand(32), rp: { name: 'Slow' }, user: { id: this.rand(16), name: 'slow', displayName: 'Slow' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' }, timeout: 60000 } });
     const c = this.cfg(); c.cred = this.b64(cred.rawId); this.put(c);
   },
   async bio() {
@@ -1175,7 +1175,7 @@ const Lock = {
     const c = this.cfg(); if (!c) return;
     const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="Lock.press('${n}')">${n}</button>`).join('');
     $('#lock').innerHTML = `
-      <div class="col" style="align-items:center;gap:10px"><div class="avatar" style="width:56px;height:56px;border-radius:20px">${svg('lock', 26)}</div><span style="font-weight:800;font-size:20px">Spese</span><span class="small muted" id="lock-msg" style="min-height:18px">${esc(this.msg || 'Inserisci il PIN')}</span></div>
+      <div class="col" style="align-items:center;gap:10px"><div class="avatar" style="width:56px;height:56px;border-radius:20px">${svg('lock', 26)}</div><span style="font-weight:800;font-size:20px">Slow</span><span class="small muted" id="lock-msg" style="min-height:18px">${esc(this.msg || 'Inserisci il PIN')}</span></div>
       <div class="lock-dots" id="lock-dots">${Array.from({ length: c.len }, (_, i) => `<span class="${i < this.entry.length ? 'on' : ''}"></span>`).join('')}</div>
       <div class="keypad" style="width:100%;max-width:320px">${keys}
         ${c.cred ? `<button onclick="Lock.bio()" aria-label="Usa la biometria">${svg('finger', 28)}</button>` : '<span></span>'}<button onclick="Lock.press('0')">0</button><button onclick="Lock.press('del')" aria-label="Cancella">${svg('del', 26)}</button>

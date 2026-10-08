@@ -1,7 +1,7 @@
 // Proxy gratuito per i prezzi (Cloudflare Workers). Serve solo se il servizio pubblico predefinito non è affidabile.
 //
 // 1. Su dash.cloudflare.com: Workers & Pages, Create, Create Worker, incolla questo codice, Deploy.
-// 2. In Spese, Impostazioni, "Portafoglio e prezzi", incolla l'indirizzo del worker seguito da  ?url=
+// 2. In Slow, Impostazioni, "Portafoglio e prezzi", incolla l'indirizzo del worker seguito da  ?url=
 //    Esempio:  https://prezzi.tuonome.workers.dev/?url=
 //
 // Inoltra solo richieste verso Yahoo Finance e aggiunge gli header CORS che il browser richiede.
