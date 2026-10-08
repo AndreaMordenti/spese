@@ -246,6 +246,7 @@ function viewHome() {
         ${income ? `<div class="row between small"><span class="muted">Entrate del mese</span><span class="num" style="color:var(--accent)">+ ${fmtMoney(income)}</span></div>` : ''}
       </div>
     </div>
+    ${homeTrendLine()}
     ${budgetCats.length ? `<div class="hscroll">${budgetCats.map(c => {
       const spent = sumBy(list.filter(e => e.cat === c.id)); const p = Math.round(spent / c.budget * 100);
       return `<button class="card budget-card" onclick="go('#analisi')">
@@ -592,7 +593,7 @@ function viewDiario() {
           <button class="check ${done ? 'on' : ''}" onclick="toggleLog('${h.id}','${diaryDate}')" aria-label="${done ? 'Annulla' : 'Segna fatto'}">${svg('check', 20, 3)}</button>
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
-    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${habits.map(h => { const st = habitStats(h); const start = addDays(weekStart(todayISO()), -28); const cells = Array.from({ length: 35 }, (_, i) => addDays(start, i)); return `
+    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryOverview(habits)}${habits.map(h => { const st = habitStats(h); const start = addDays(weekStart(todayISO()), -28); const cells = Array.from({ length: 35 }, (_, i) => addDays(start, i)); return `
       <details style="--c:${h.color}">
         <summary><span class="row" style="gap:10px"><span style="color:${h.color}">${svg(h.icon, 18)}</span>${esc(h.name)}</span><span class="small muted" style="margin-left:auto;margin-right:12px">${st.total} giorni</span></summary>
         <div>
@@ -602,6 +603,7 @@ function viewDiario() {
             <div class="stat"><span class="v num">${st.year}</span><span class="small muted">quest'anno</span></div>
             <div class="stat"><span class="v num">${st.total}</span><span class="small muted">in totale</span></div>
           </div>
+          ${habitInsights(h, st)}
           ${yearBars(st, h.color)}
           <span class="small muted">Ultima volta: ${longDate(st.last)}${st.first ? ' · primo giorno: ' + longDate(st.first) : ''}</span>
         </div>
