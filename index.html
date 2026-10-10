@@ -253,6 +253,40 @@
   table.preview td, table.preview th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
   .scroll-x { overflow-x: auto; }
   .hidden { display: none !important; }
+  /* ---------- Computer: barra laterale e contenuti su più colonne ---------- */
+  .desk-only, .fab-label { display: none !important; }
+  @media (min-width: 1024px) {
+    body { font-size: 15px; }
+    nav { top: 0; bottom: 0; right: auto; width: 232px; height: auto; padding: 28px 16px; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 4px; border-top: none; border-right: 1px solid var(--line); background: var(--bg); backdrop-filter: none; }
+    nav .desk-only { display: flex !important; }
+    nav .brand { order: -3; align-items: center; gap: 12px; font-weight: 800; font-size: 20px; padding: 0 10px 22px; }
+    nav .brand img { width: 34px; height: 34px; border-radius: 10px; }
+    nav a, :root[data-theme="minimal"] nav a { width: auto; max-width: none; height: 46px; flex: 0 0 auto; flex-direction: row; justify-content: flex-start; gap: 14px; padding: 0 14px; border-radius: 12px; font-size: 14px; font-weight: 700; color: var(--muted); }
+    :root[data-theme="minimal"] nav a svg:not(.fab svg) { display: block; }
+    nav a svg { width: 20px; height: 20px; }
+    nav a:hover { background: var(--surface); color: var(--text); }
+    nav a.on { background: var(--surface-2); color: var(--text); }
+    nav a.fab, :root[data-theme="minimal"] nav a.fab { order: -2; flex: 0 0 auto; width: auto; height: 48px; margin: 0 0 18px; border-radius: 14px; justify-content: center; box-shadow: none; }
+    nav a.fab svg { width: 20px; height: 20px; }
+    nav .fab-label { display: inline !important; font-size: 14px; }
+    nav .nav-settings { margin-top: auto; }
+    #app { max-width: 1320px; margin: 0 0 0 232px; padding: 36px 48px 48px; }
+    body.modal #app { margin: 0 auto; max-width: 520px; padding-top: 48px; }
+    .screen.desk-cols { display: block; columns: 2; column-gap: 28px; }
+    .screen.desk-cols > * { break-inside: avoid; margin-bottom: 22px; }
+    .screen.desk-cols > .row.between, .screen.desk-cols > .week { column-span: all; }
+    .hscroll { margin: 0; padding: 0; flex-wrap: wrap; overflow: visible; }
+    .hscroll .budget-card { flex: 1 1 150px; }
+    .card svg[role="img"] { max-height: 240px; }
+    .sheet-bg { align-items: center; }
+    .sheet { border-radius: 24px; max-height: 86vh; }
+    .toast { bottom: 28px; }
+    .title { font-size: 28px; }
+  }
+  @media (min-width: 1500px) {
+    .screen.desk-cols[data-view="analisi"] { columns: 3; }
+  }
+
   html.locked #app, html.locked nav { visibility: hidden; }
   #lock { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: calc(var(--sat) + 20px) 24px calc(var(--sab) + 20px); overflow-y: auto; }
   .lock-dots { display: flex; gap: 16px; height: 16px; }

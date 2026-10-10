@@ -68,6 +68,35 @@ async function scheduleNotifications() {
   } catch (e) { console.warn('notifiche', e); }
 }
 
+// ---------- File: export dall'app ----------
+// Nell'app il download del browser non funziona: scrive il file e apre il menu Condividi di Android (Drive, File, email…).
+async function nativeSave(name, content) {
+  const F = Native.plugin('Filesystem'), Sh = Native.plugin('Share');
+  if (!F || !Sh) return toast('Export non disponibile');
+  try {
+    const { uri } = await F.writeFile({ path: name, data: content, directory: 'CACHE', encoding: 'utf8' });
+    await Sh.share({ title: name, url: uri, dialogTitle: 'Salva o invia ' + name });
+  } catch (e) { if (!/cancel/i.test(e.message || '')) toast('Export non riuscito: ' + (e.message || e), 3500); }
+}
+
+// ---------- Login Google nativo (per Drive) ----------
+// Nell'app Google non permette il login web: si usa quello di Android, con il solo permesso sulla cartella privata di Drive.
+let _gInit = null;
+function nativeGoogleInit() {
+  const L = Native.plugin('SocialLogin'); if (!L) return Promise.reject(new Error('login Google non disponibile'));
+  return (_gInit = _gInit || L.initialize({ google: { webClientId: GOOGLE_CLIENT_ID, mode: 'online' } }));
+}
+async function nativeGoogleToken(interactive) {
+  const L = Native.plugin('SocialLogin'); await nativeGoogleInit();
+  // Dopo il primo accesso l'account è già autorizzato: nessuna schermata, solo un nuovo token.
+  const opts = { scopes: [DRIVE_SCOPE], ...(interactive ? {} : { filterByAuthorizedAccounts: true, autoSelectEnabled: true }) };
+  const r = await L.login({ provider: 'google', options: opts });
+  const t = r && r.result && r.result.accessToken && r.result.accessToken.token;
+  if (!t) throw new Error('Google non ha concesso l\'accesso a Drive');
+  return t;
+}
+function nativeGoogleLogout() { const L = Native.plugin('SocialLogin'); if (L) L.logout({ provider: 'google' }).catch(() => {}); }
+
 // ---------- Collegamento con l'app ----------
 let nativeTimer = null;
 function onDataSaved() { if (!Native.on) return; clearTimeout(nativeTimer); nativeTimer = setTimeout(() => { pushWidgets(); scheduleNotifications(); }, 800); }

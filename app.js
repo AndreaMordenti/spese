@@ -107,9 +107,13 @@ function load() {
 }
 let saveTimer = null;
 function save(sync = true) {
+  // Le impostazioni condivise tra dispositivi hanno una data: vince la modifica più recente.
+  const sh = JSON.stringify(pickSettings(S.settings));
+  if (sh !== S.meta.settingsHash) { S.meta.settingsHash = sh; S.meta.settingsAt = Date.now(); sync = true; }
+  if (sync) S.meta.dirty = true;
   localStorage.setItem(KEY, JSON.stringify(S));
   if (typeof onDataSaved === 'function') onDataSaved(); // widget e notifiche nell'app Android
-  if (sync && Drive.ready()) { clearTimeout(saveTimer); saveTimer = setTimeout(() => Drive.sync().catch(() => {}), 1500); }
+  if (sync && Drive.on()) { clearTimeout(saveTimer); saveTimer = setTimeout(() => Drive.sync(), 1500); }
 }
 const live = arr => arr.filter(x => !x.deleted);
 const UNKNOWN_CAT = { id: '?', name: 'Senza categoria', color: '#9AA0AE', icon: 'tag', kind: 'expense', budget: 0 };
@@ -177,16 +181,19 @@ function render(name, args) {
   const app = $('#app');
   const views = VIEWS;
   document.body.classList.toggle('modal', name === 'aggiungi');
-  app.innerHTML = `<section class="screen active" data-view="${name}">${views[name](args)}</section>`;
+  const cols = ['home', 'analisi', 'portafoglio', 'diario', 'impostazioni'].includes(name) ? ' desk-cols' : '';
+  app.innerHTML = `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
   renderNav(name);
   if (views[name].after) views[name].after(args);
 }
 const gearBtn = () => `<button class="chip" onclick="go('#impostazioni')" aria-label="Impostazioni">${svg('gear', 18)}</button>`;
 function renderNav(active) {
   const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary']];
-  $('#nav').innerHTML = items.map(([r, label, ic]) => r === 'aggiungi'
-    ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}</a>`
-    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('');
+  // Su computer la stessa barra diventa una colonna laterale: marchio in alto e Impostazioni in fondo (solo desktop).
+  $('#nav').innerHTML = `<div class="brand desk-only"><img src="icon-192.png" alt="">Slow</div>` + items.map(([r, label, ic]) => r === 'aggiungi'
+    ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}<span class="fab-label">Nuovo movimento</span></a>`
+    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('')
+    + `<a href="#impostazioni" class="desk-only nav-settings ${active === 'impostazioni' ? 'on' : ''}">${svg('gear', 24)}<span>Impostazioni</span></a>`;
 }
 
 // ---------- Calcoli ----------
@@ -783,17 +790,28 @@ const AI = {
 };
 
 // ---------- Google Drive (cartella privata dell'app) ----------
+// ---------- Google Drive: copia completa e automatica dei dati ----------
+// L'app lavora sempre sui dati del telefono (anche offline); appena c'è rete li fonde con la copia su Drive
+// (cartella privata dell'app) e ricarica il risultato. App Android e versione web usano lo stesso file.
+const GOOGLE_CLIENT_ID = '1024229130794-s41f7heqdmc489odeq3t1sb5uas63b2o.apps.googleusercontent.com';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+// Impostazioni che seguono l'utente su tutti i dispositivi (tema, notifiche e chiavi restano per dispositivo).
+const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint'];
+const pickSettings = st => Object.fromEntries(SYNCED_SETTINGS.filter(k => k in st).map(k => [k, st[k]]));
 const Drive = {
-  state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json',
-  ready() { return !!(S.settings.clientId && window.google && this.token && Date.now() < this.exp); },
+  state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json', running: null, again: false,
+  clientId() { return S.settings.clientId || GOOGLE_CLIENT_ID; },
+  on() { return !!(S.settings.driveOn || (S.meta.lastSync && S.settings.clientId)); },
+  ready() { return this.on() && !!this.token && Date.now() < this.exp; },
   setState(s) { this.state = s; const d = $('#sync-dot'); if (d) d.className = 'sync-dot ' + s; },
-  init(interactive) {
+  setToken(t, secs) { this.token = t; this.exp = Date.now() + ((secs || 3600) - 60) * 1000; sessionStorage.setItem('spese.tok', JSON.stringify({ t: this.token, e: this.exp })); },
+  async init(interactive) {
+    if (typeof Native !== 'undefined' && Native.on) { const t = await nativeGoogleToken(interactive); return this.setToken(t, 3300); }
     return new Promise((res, rej) => {
-      if (!S.settings.clientId) return rej(new Error('Client ID Google mancante'));
-      if (!window.google?.accounts?.oauth2) return rej(new Error('Libreria Google non caricata (sei offline?)'));
+      if (!window.google?.accounts?.oauth2) return rej(new Error('libreria Google non caricata (sei offline?)'));
       this.client = google.accounts.oauth2.initTokenClient({
-        client_id: S.settings.clientId, scope: 'https://www.googleapis.com/auth/drive.appdata',
-        callback: r => { if (r.error) return rej(new Error(r.error)); this.token = r.access_token; this.exp = Date.now() + (r.expires_in - 60) * 1000; sessionStorage.setItem('spese.tok', JSON.stringify({ t: this.token, e: this.exp })); res(); },
+        client_id: this.clientId(), scope: DRIVE_SCOPE,
+        callback: r => { if (r.error) return rej(new Error(r.error)); this.setToken(r.access_token, r.expires_in); res(); },
         error_callback: e => rej(new Error(e.type || 'accesso annullato')),
       });
       this.client.requestAccessToken({ prompt: interactive ? 'consent' : '' });
@@ -808,6 +826,7 @@ const Drive = {
   async api(url, opt = {}) {
     const res = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), authorization: 'Bearer ' + this.token } });
     if (res.status === 401) { this.token = null; sessionStorage.removeItem('spese.tok'); throw new Error('sessione Google scaduta'); }
+    if (res.status === 404) { S.meta.driveFileId = null; throw new Error('file su Drive non trovato, riprovo'); }
     if (!res.ok) throw new Error('Drive HTTP ' + res.status);
     return res;
   },
@@ -815,23 +834,30 @@ const Drive = {
     if (S.meta.driveFileId) return S.meta.driveFileId;
     const r = await (await this.api(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27${this.FILE}%27&fields=files(id)`)).json();
     if (r.files?.length) { S.meta.driveFileId = r.files[0].id; return r.files[0].id; }
-    const meta = { name: this.FILE, parents: ['appDataFolder'] };
-    const body = new FormData(); body.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' })); body.append('file', new Blob([JSON.stringify(this.payload())], { type: 'application/json' }));
-    const c = await (await this.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', body })).json();
+    const c = await (await this.api('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: this.FILE, parents: ['appDataFolder'], mimeType: 'application/json' }) })).json();
     S.meta.driveFileId = c.id; return c.id;
   },
-  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps }; },
+  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
   mergeArr(local, remote) {
     const m = new Map(); [...local, ...remote].forEach(x => { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); });
     return [...m.values()];
   },
-  async sync(interactive = false) {
-    if (!S.settings.clientId) return;
+  // Una sincronizzazione alla volta; se arrivano modifiche durante l'invio, ne parte subito un'altra.
+  sync(interactive = false) {
+    if (!interactive && !this.on()) return Promise.resolve();
+    if (this.running) { this.again = true; return this.running; }
+    this.running = this.run(interactive).finally(() => { this.running = null; if (this.again) { this.again = false; this.sync(); } });
+    return this.running;
+  },
+  async run(interactive) {
+    if (!navigator.onLine) { this.setState('err'); return; }
     this.setState('busy');
     try {
       if (interactive) await this.init(true); else await this.ensureToken();
       const id = await this.findFile();
       const remote = await (await this.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json().catch(() => null);
+      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
+      const before = sig();
       if (remote && remote.version) {
         S.expenses = this.mergeArr(S.expenses, remote.expenses || []);
         S.categories = this.mergeArr(S.categories, remote.categories || []);
@@ -839,15 +865,23 @@ const Drive = {
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
         ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
         if ((remote.categories || []).length) dropPristineDefaults();
-        normalizeHabits(); postPlanned();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
+        if (remote.settings && (remote.settingsAt || 0) > (S.meta.settingsAt || 0)) { Object.assign(S.settings, pickSettings(remote.settings)); S.meta.settingsAt = remote.settingsAt; S.meta.settingsHash = JSON.stringify(pickSettings(S.settings)); }
+        normalizeHabits(); postPlanned();
       }
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.payload()) });
-      S.meta.lastSync = Date.now(); save(false); this.setState('ok');
-      if (interactive) { toast('Sincronizzato con Google Drive'); route(); }
+      S.settings.driveOn = true; S.meta.lastSync = Date.now(); S.meta.dirty = false; save(false); this.setState('ok');
+      if (interactive) toast('Sincronizzato con Google Drive');
+      if (interactive || (sig() !== before && location.hash !== '#aggiungi')) route();
     } catch (e) {
-      this.setState('err'); if (interactive) toast('Sincronizzazione non riuscita: ' + e.message, 4000); else console.warn(e);
+      this.setState('err'); if (interactive) toast('Sincronizzazione non riuscita: ' + e.message, 4000); else console.warn('Drive', e);
     }
+  },
+  disconnect() {
+    if (!confirm('Scollegare Google Drive? I dati restano sul dispositivo e su Drive, ma le modifiche smettono di essere salvate.')) return;
+    S.settings.driveOn = false; S.settings.clientId = ''; S.meta.lastSync = null; S.meta.driveFileId = null; this.token = null; sessionStorage.removeItem('spese.tok');
+    if (typeof Native !== 'undefined' && Native.on) nativeGoogleLogout();
+    save(false); route();
   },
 };
 
@@ -861,10 +895,14 @@ let catKindView = 'expense';
 const catSettingsRow = (c, counts) => `<button class="item" style="padding:10px 12px" onclick="editCategory('${c.id}')"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:36px;height:36px">${svg(c.icon, 18)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(c.name)}</span><span class="small muted">${counts[c.id] || 0} movimenti${c.excluded ? ' · non conta nelle spese' : ''}</span></div><span class="small muted num">${c.budget ? fmtInt(c.budget) + ' €' : ''}</span></button>`;
 function viewSettings() {
   const s = S.settings, p = AI.providers[s.aiProvider] || AI.providers.custom;
-  const gdrive = `
-      <div class="field"><label>Client ID OAuth</label><input value="${esc(s.clientId)}" onchange="S.settings.clientId=this.value.trim();save(false)" placeholder="xxxx.apps.googleusercontent.com"><span class="hint">Lo trovi nella Google Cloud Console (vedi la guida). I dati vanno nella cartella nascosta dell'app sul tuo Drive, visibile solo a questa app.</span></div>
-      <button class="btn sm" onclick="Drive.sync(true)">${svg('cloud', 18)} ${S.meta.lastSync ? 'Sincronizza ora' : 'Accedi e sincronizza'}</button>
-      <span class="hint">${S.meta.lastSync ? 'Ultima sincronizzazione: ' + new Date(S.meta.lastSync).toLocaleString('it-IT') : 'Mai sincronizzato. Dopo il primo accesso la sincronizzazione avviene da sola a ogni modifica.'}</span>`;
+  const gdrive = Drive.on() ? `
+      <div class="row" style="gap:10px"><span class="sync-dot ${Drive.state || 'ok'}"></span><span style="font-weight:700">Collegato a Google Drive</span></div>
+      <span class="hint">${S.meta.lastSync ? 'Ultimo salvataggio: ' + new Date(S.meta.lastSync).toLocaleString('it-IT') : 'In attesa del primo salvataggio.'}${S.meta.dirty ? ' · ci sono modifiche da salvare: partono appena c\'è internet.' : ''}</span>
+      <button class="btn sm" onclick="Drive.sync(true)">${svg('cloud', 18)} Salva ora</button>
+      <span class="hint">Ogni modifica viene salvata su Drive appena c'è rete; offline l'app funziona normalmente e recupera dopo. App Android e versione web condividono gli stessi dati.</span>
+      <button class="btn danger sm" onclick="Drive.disconnect()">Scollega</button>` : `
+      <button class="btn sm primary" onclick="Drive.sync(true)">${svg('cloud', 18)} Accedi con Google e salva su Drive</button>
+      <span class="hint">I dati vanno nella cartella privata dell'app sul tuo Google Drive, visibile solo a Slow. Dopo il primo accesso ogni modifica viene salvata da sola appena c'è internet.</span>`;
   const ai = `
       <div class="field"><label>Provider</label><select onchange="S.settings.aiProvider=this.value;S.settings.aiModel='';S.settings.aiEndpoint='';save(false);route()">${Object.entries(AI.providers).map(([k, v]) => `<option value="${k}" ${k === s.aiProvider ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
       <div class="field"><label>Chiave API</label><input type="password" value="${esc(s.aiKey)}" onchange="S.settings.aiKey=this.value.trim();save(false)" placeholder="Incolla la chiave"><span class="hint">Resta solo su questo dispositivo, non viene sincronizzata su Drive.</span></div>
@@ -879,8 +917,9 @@ function viewSettings() {
       <button class="btn sm" onclick="addCategory()">${svg('plus', 16, 2.5)} Nuova categoria</button>
       <span class="hint">Tocca una categoria per cambiarle gruppo e nome, impostare il budget mensile, escluderla dal totale delle spese (utile per gli investimenti) o unirla a un'altra.</span>`;
   const data = `
-      <button class="btn sm" onclick="go('#importa')">Importa dati (Wallet, log, backup)</button>
       <button class="btn sm" onclick="exportJSON()">Esporta backup completo (JSON)</button>
+      <button class="btn sm" onclick="go('#importa')">Importa backup completo (JSON)</button>
+      <button class="btn sm" onclick="go('#importa')">Importa da Wallet o log attività (CSV)</button>
       <button class="btn sm" onclick="exportCSV()">Esporta movimenti (CSV)</button>
       <button class="btn danger sm" onclick="wipe()">Cancella tutti i dati locali</button>
       <span class="hint">${live(S.expenses).length} movimenti, ${live(S.habitLogs).length} registrazioni di attività.</span>`;
@@ -962,7 +1001,9 @@ function createCategory(forDraft) {
   if (forDraft) draft.cat = c.id;
   route();
 }
-function download(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+// Nell'app Android il download del browser non funziona: si usa il menu Condividi (nativeSave).
+function download(name, content, type) {
+  if (typeof Native !== 'undefined' && Native.on) return nativeSave(name, content); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 function exportJSON() { download(`slow-backup-${todayISO()}.json`, JSON.stringify(Drive.payload(), null, 2), 'application/json'); }
 function exportCSV() {
   const rows = [['data', 'ora', 'tipo', 'importo', 'categoria', 'nota', 'conto'], ...live(S.expenses).sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '')).map(e => [e.date, e.time || '', typeOf(e) === 'income' ? 'entrata' : 'spesa', String(e.amount).replace('.', ','), catById(e.cat).name, e.note || '', e.account || ''])];
@@ -1138,7 +1179,7 @@ function viewImport() {
   return `
     <div class="row between"><button class="chip" onclick="history.back()" aria-label="Indietro">${svg('back', 16, 2.5)}</button><span style="font-weight:800">Importa dati</span><span style="width:40px"></span></div>
     <p class="muted" style="font-size:13px;line-height:1.55;margin:0">Scegli uno o più file insieme. L'app riconosce da sola il tipo:<br>· export di Wallet (.csv)<br>· log delle attività (.csv, un file per attività, anche di più anni)<br>· backup dell'app (.json)<br>Quello che c'è già non viene duplicato, quindi puoi reimportare senza problemi.</p>
-    <label class="btn" style="cursor:pointer">Scegli i file<input type="file" multiple accept=".csv,.json,.txt,.xlsx,.xls" class="hidden" onchange="onFiles(this.files)"></label>
+    <label class="btn" style="cursor:pointer">Scegli i file<input type="file" multiple class="hidden" onchange="onFiles(this.files)"></label>
     ${body}`;
 }
 
@@ -1262,7 +1303,10 @@ function boot() {
   // Nell'app Android i file sono già nel pacchetto: il service worker serve solo alla versione web.
   const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (!isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  window.addEventListener('load', () => { setTimeout(() => { if (S.settings.clientId) Drive.sync().catch(() => {}); }, 1200); });
-  window.addEventListener('online', () => { if (S.settings.clientId) Drive.sync().catch(() => {}); });
+  // Drive: all'avvio, al ritorno della rete e quando si torna nell'app.
+  window.addEventListener('load', () => { setTimeout(() => Drive.sync(), 1200); });
+  window.addEventListener('online', () => Drive.sync());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Drive.sync(); });
+  setInterval(() => { if (S.meta.dirty) Drive.sync(); }, 5 * 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !Lock.locked && postPlanned()) route(); });
 }
