@@ -233,7 +233,7 @@ function viewHome() {
         <div class="col"><span class="small muted">${S.settings.name ? 'Ciao' : 'Benvenuto'}</span><span style="font-weight:700">${esc(S.settings.name || 'nelle tue spese')}</span></div>
       </button>
       <div class="row" style="gap:10px">
-        <span class="sync-dot ${Drive.state}" id="sync-dot" title="Stato sincronizzazione"></span>
+        ${Drive.on() ? `<button onclick="Drive.sync(true)" aria-label="Salva su Google Drive" title="${Drive.state === 'login' ? 'Tocca per salvare su Drive' : 'Google Drive'}" style="padding:10px"><span class="sync-dot ${Drive.state}" id="sync-dot"></span></button>` : ''}
         ${gearBtn()}
       </div>
     </div>
@@ -254,6 +254,7 @@ function viewHome() {
         ${income ? `<div class="row between small"><span class="muted">Entrate del mese</span><span class="num" style="color:var(--accent)">+ ${fmtMoney(income)}</span></div>` : ''}
       </div>
     </div>
+    ${Drive.state === 'login' || (Drive.state === 'err' && S.meta.dirty) ? `<button class="empty" style="color:var(--warn);border-color:var(--warn);padding:12px" onclick="Drive.sync(true)">${svg('cloud', 16)} Modifiche non ancora su Drive: tocca per salvarle</button>` : ''}
     ${homeTrendLine()}
     ${budgetCats.length ? `<div class="hscroll">${budgetCats.map(c => {
       const spent = sumBy(list.filter(e => e.cat === c.id)); const p = Math.round(spent / c.budget * 100);
@@ -814,13 +815,15 @@ const Drive = {
         callback: r => { if (r.error) return rej(new Error(r.error)); this.setToken(r.access_token, r.expires_in); res(); },
         error_callback: e => rej(new Error(e.type || 'accesso annullato')),
       });
-      this.client.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+      this.client.requestAccessToken({ prompt: S.settings.driveOn ? '' : 'consent' }); // dopo il primo accesso niente schermata di consenso
     });
   },
   async ensureToken() {
     if (this.token && Date.now() < this.exp) return;
     const saved = JSON.parse(sessionStorage.getItem('spese.tok') || 'null');
     if (saved && Date.now() < saved.e) { this.token = saved.t; this.exp = saved.e; return; }
+    // Sul web Google rinnova il permesso solo dopo un clic: lo segnaliamo invece di fallire in silenzio.
+    if (!(typeof Native !== 'undefined' && Native.on)) { const e = new Error('serve un tocco per riconnettersi a Google'); e.login = true; throw e; }
     await this.init(false);
   },
   async api(url, opt = {}) {
@@ -870,11 +873,13 @@ const Drive = {
         normalizeHabits(); postPlanned();
       }
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.payload()) });
-      S.settings.driveOn = true; S.meta.lastSync = Date.now(); S.meta.dirty = false; save(false); this.setState('ok');
+      this.lastError = ''; S.settings.driveOn = true; S.meta.lastSync = Date.now(); S.meta.dirty = false; save(false); this.setState('ok');
       if (interactive) toast('Sincronizzato con Google Drive');
       if (interactive || (sig() !== before && location.hash !== '#aggiungi')) route();
     } catch (e) {
-      this.setState('err'); if (interactive) toast('Sincronizzazione non riuscita: ' + e.message, 4000); else console.warn('Drive', e);
+      this.lastError = e.message; this.setState(e.login ? 'login' : 'err');
+      if (interactive) toast('Sincronizzazione non riuscita: ' + e.message, 4000); else console.warn('Drive', e);
+      if (!interactive && location.hash === '#home') route();
     }
   },
   disconnect() {
@@ -897,6 +902,7 @@ function viewSettings() {
   const s = S.settings, p = AI.providers[s.aiProvider] || AI.providers.custom;
   const gdrive = Drive.on() ? `
       <div class="row" style="gap:10px"><span class="sync-dot ${Drive.state || 'ok'}"></span><span style="font-weight:700">Collegato a Google Drive</span></div>
+      ${Drive.state === 'login' ? '<span class="hint" style="color:var(--warn)">Google chiede di confermare l\'accesso: tocca "Salva ora".</span>' : Drive.lastError ? `<span class="hint" style="color:var(--warn)">Ultimo errore: ${esc(Drive.lastError)}</span>` : ''}
       <span class="hint">${S.meta.lastSync ? 'Ultimo salvataggio: ' + new Date(S.meta.lastSync).toLocaleString('it-IT') : 'In attesa del primo salvataggio.'}${S.meta.dirty ? ' · ci sono modifiche da salvare: partono appena c\'è internet.' : ''}</span>
       <button class="btn sm" onclick="Drive.sync(true)">${svg('cloud', 18)} Salva ora</button>
       <span class="hint">Ogni modifica viene salvata su Drive appena c'è rete; offline l'app funziona normalmente e recupera dopo. App Android e versione web condividono gli stessi dati.</span>
