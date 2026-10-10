@@ -79,23 +79,14 @@ async function nativeSave(name, content) {
   } catch (e) { if (!/cancel/i.test(e.message || '')) toast('Export non riuscito: ' + (e.message || e), 3500); }
 }
 
-// ---------- Login Google nativo (per Drive) ----------
-// Nell'app Google non permette il login web: si usa quello di Android, con il solo permesso sulla cartella privata di Drive.
-let _gInit = null;
-function nativeGoogleInit() {
-  const L = Native.plugin('SocialLogin'); if (!L) return Promise.reject(new Error('login Google non disponibile'));
-  return (_gInit = _gInit || L.initialize({ google: { webClientId: GOOGLE_CLIENT_ID, mode: 'online' } }));
-}
+// ---------- Google Drive nell'app ----------
+// Autorizzazione Android: la prima volta chiede il consenso, poi rinnova il token in silenzio.
 async function nativeGoogleToken(interactive) {
-  const L = Native.plugin('SocialLogin'); await nativeGoogleInit();
-  // Dopo il primo accesso l'account è già autorizzato: nessuna schermata, solo un nuovo token.
-  const opts = { scopes: [DRIVE_SCOPE], ...(interactive ? {} : { filterByAuthorizedAccounts: true, autoSelectEnabled: true }) };
-  const r = await L.login({ provider: 'google', options: opts });
-  const t = r && r.result && r.result.accessToken && r.result.accessToken.token;
-  if (!t) throw new Error('Google non ha concesso l\'accesso a Drive');
-  return t;
+  const W = Native.plugin('SlowWidget'); if (!W) throw new Error('autorizzazione Google non disponibile');
+  try { return (await W.driveToken({ interactive: !!interactive })).token; }
+  catch (e) { const err = new Error(e.message || String(e)); if (!interactive && /tocco/.test(err.message)) err.login = true; throw err; }
 }
-function nativeGoogleLogout() { const L = Native.plugin('SocialLogin'); if (L) L.logout({ provider: 'google' }).catch(() => {}); }
+function nativeGoogleLogout() { /* il permesso si revoca da account Google → Sicurezza → App di terze parti */ }
 
 // ---------- Collegamento con l'app ----------
 let nativeTimer = null;

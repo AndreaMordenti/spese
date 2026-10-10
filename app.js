@@ -195,7 +195,7 @@ function renderNav(active) {
   // Su computer la stessa barra diventa una colonna laterale: marchio in alto e Impostazioni in fondo (solo desktop).
   $('#nav').innerHTML = `<div class="brand desk-only"><img src="icon-192.png" alt="">Slow</div>` + items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}<span class="fab-label">Nuovo movimento</span></a>`
-    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('')
+    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>` + (r === 'analisi' ? `<a href="#esplora" class="desk-only ${active === 'esplora' ? 'on' : ''}">${svg('search', 24)}<span>Esplora</span></a>` : '')).join('')
     + `<a href="#impostazioni" class="desk-only nav-settings ${active === 'impostazioni' ? 'on' : ''}">${svg('gear', 24)}<span>Impostazioni</span></a>`;
 }
 
@@ -538,6 +538,7 @@ function viewAnalisi() {
     <div class="row between">
       <span class="title">Analisi</span>
       <div class="row" style="gap:8px">
+        <button class="chip" onclick="go('#esplora')" aria-label="Esplora: analisi dettagliate">${svg('search', 18)}</button>
         <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
         <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
         ${gearBtn()}
@@ -804,7 +805,7 @@ const AI = {
 const GOOGLE_CLIENT_ID = '1024229130794-s41f7heqdmc489odeq3t1sb5uas63b2o.apps.googleusercontent.com';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 // Impostazioni che seguono l'utente su tutti i dispositivi (tema, notifiche e chiavi restano per dispositivo).
-const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint'];
+const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint', 'saveBuffer', 'emergencyMonths', 'liquidity'];
 const pickSettings = st => Object.fromEntries(SYNCED_SETTINGS.filter(k => k in st).map(k => [k, st[k]]));
 const Drive = {
   state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json', running: null, again: false,
@@ -812,7 +813,7 @@ const Drive = {
   on() { return !!(S.settings.driveOn || (S.meta.lastSync && S.settings.clientId)); },
   ready() { return this.on() && !!this.token && Date.now() < this.exp; },
   setState(s) { this.state = s; const d = $('#sync-dot'); if (d) d.className = 'sync-dot ' + s; },
-  setToken(t, secs) { this.token = t; this.exp = Date.now() + ((secs || 3600) - 60) * 1000; sessionStorage.setItem('spese.tok', JSON.stringify({ t: this.token, e: this.exp })); },
+  setToken(t, secs) { this.token = t; this.exp = Date.now() + ((secs || 3600) - 60) * 1000; localStorage.setItem('spese.tok', JSON.stringify({ t: this.token, e: this.exp })); },
   async init(interactive) {
     if (typeof Native !== 'undefined' && Native.on) { const t = await nativeGoogleToken(interactive); return this.setToken(t, 3300); }
     return new Promise((res, rej) => {
@@ -827,7 +828,7 @@ const Drive = {
   },
   async ensureToken() {
     if (this.token && Date.now() < this.exp) return;
-    const saved = JSON.parse(sessionStorage.getItem('spese.tok') || 'null');
+    const saved = JSON.parse(localStorage.getItem('spese.tok') || 'null');
     if (saved && Date.now() < saved.e) { this.token = saved.t; this.exp = saved.e; return; }
     // Sul web Google rinnova il permesso solo dopo un clic: lo segnaliamo invece di fallire in silenzio.
     if (!(typeof Native !== 'undefined' && Native.on)) { const e = new Error('serve un tocco per riconnettersi a Google'); e.login = true; throw e; }
@@ -835,7 +836,7 @@ const Drive = {
   },
   async api(url, opt = {}) {
     const res = await fetch(url, { ...opt, headers: { ...(opt.headers || {}), authorization: 'Bearer ' + this.token } });
-    if (res.status === 401) { this.token = null; sessionStorage.removeItem('spese.tok'); throw new Error('sessione Google scaduta'); }
+    if (res.status === 401) { this.token = null; localStorage.removeItem('spese.tok'); throw new Error('sessione Google scaduta'); }
     if (res.status === 404) { S.meta.driveFileId = null; throw new Error('file su Drive non trovato, riprovo'); }
     if (!res.ok) throw new Error('Drive HTTP ' + res.status);
     return res;
@@ -891,7 +892,7 @@ const Drive = {
   },
   disconnect() {
     if (!confirm('Scollegare Google Drive? I dati restano sul dispositivo e su Drive, ma le modifiche smettono di essere salvate.')) return;
-    S.settings.driveOn = false; S.settings.clientId = ''; S.meta.lastSync = null; S.meta.driveFileId = null; this.token = null; sessionStorage.removeItem('spese.tok');
+    S.settings.driveOn = false; S.settings.clientId = ''; S.meta.lastSync = null; S.meta.driveFileId = null; this.token = null; localStorage.removeItem('spese.tok');
     if (typeof Native !== 'undefined' && Native.on) nativeGoogleLogout();
     save(false); route();
   },
