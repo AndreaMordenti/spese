@@ -1,0 +1,9 @@
+{
+  "appId": "com.andreamordenti.slow",
+  "appName": "Slow",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0D0E12" },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

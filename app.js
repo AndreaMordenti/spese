@@ -1254,7 +1254,9 @@ function boot() {
   postPlanned();
   snapshotPortfolio();
   route();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Nell'app Android i file sono già nel pacchetto: il service worker serve solo alla versione web.
+  const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (!isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   window.addEventListener('load', () => { setTimeout(() => { if (S.settings.clientId) Drive.sync().catch(() => {}); }, 1200); });
   window.addEventListener('online', () => { if (S.settings.clientId) Drive.sync().catch(() => {}); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !Lock.locked && postPlanned()) route(); });
