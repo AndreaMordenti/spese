@@ -16,7 +16,8 @@ const sgnPct = n => (n >= 0 ? '+' : '-') + Math.abs(n).toFixed(2).replace('.', '
 // Barre mensili con linea di tendenza tratteggiata e, se richiesto, una barra di proiezione.
 function trendBars(pts, o = {}) {
   const W = 340, H = 150, pl = 6, pr = 6, pt = 14, pb = 22, n = pts.length, slots = n + (o.project ? 1 : 0);
-  const lr = linreg(pts.map(p => p.v)), tv = i => (lr ? Math.max(0, lr.a + lr.b * i) : 0);
+  // o.fit: quanti punti usare per la tendenza (es. escludere il mese in corso, ancora parziale).
+  const lr = linreg(pts.slice(0, o.fit || n).map(p => p.v)), tv = i => (lr ? Math.max(0, lr.a + lr.b * i) : 0);
   const maxV = Math.max(...pts.map(p => p.v), ...(lr ? Array.from({ length: slots }, (_, i) => tv(i)) : [0]), 1);
   const cw = (W - pl - pr) / slots, X = i => pl + cw * (i + 0.5), Y = v => pt + (H - pt - pb) * (1 - v / maxV), base = H - pb;
   const bars = pts.map((p, i) => `<rect x="${(X(i) - cw * 0.32).toFixed(1)}" y="${Y(p.v).toFixed(1)}" width="${(cw * 0.64).toFixed(1)}" height="${Math.max(1, base - Y(p.v)).toFixed(1)}" rx="3" style="fill:${p.on ? 'var(--accent)' : 'var(--surface-3)'}"/>`).join('');

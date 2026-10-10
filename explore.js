@@ -66,7 +66,9 @@ function exSpese() {
   if (days <= 62) pts = Array.from({ length: days }, (_, i) => { const d = addDays(R[0], i); return { label: String(Number(d.slice(8))), v: sumBy(main.filter(e => e.date === d)) }; });
   else { const ks = []; for (let d = R[0].slice(0, 7); d <= R[1].slice(0, 7); d = localISO(new Date(Number(d.slice(0, 4)), Number(d.slice(5)), 1)).slice(0, 7)) ks.push(d); pts = ks.map(k => ({ label: shortMonth(k), v: sumBy(main.filter(e => monthKey(e.date) === k)) })); }
   if (pts.length) pts[pts.length - 1].on = true;
-  const { lr, svg: chart } = pts.length >= 2 ? trendBars(pts, { aria: 'Andamento nel periodo' }) : { svg: '' };
+  // Il mese (o il giorno) in corso è parziale: non entra nella tendenza.
+  const partial = R[1] === todayISO() && pts.length > 2 ? 1 : 0;
+  const { lr, svg: chart } = pts.length >= 2 ? trendBars(pts, { aria: 'Andamento nel periodo', fit: pts.length - partial }) : { svg: '' };
   // Ripartizione per gruppo e categoria, con confronto.
   const byCat = {}, byCatC = {}; main.forEach(e => { byCat[e.cat] = (byCat[e.cat] || 0) + Number(e.amount); }); FC.forEach(e => { byCatC[e.cat] = (byCatC[e.cat] || 0) + Number(e.amount); });
   const cnt = {}; main.forEach(e => { cnt[e.cat] = (cnt[e.cat] || 0) + 1; });
@@ -128,11 +130,11 @@ function exRisparmio() {
   const n = EX.months, { months } = completedMonths(n);
   const rows = months.map(m => { const inc = sumBy(monthIncome(m.k)), exp = sumBy(monthExpenses(m.k)), inv = sumBy(monthAll(m.k).filter(e => typeOf(e) === 'expense' && catById(e.cat).excluded)); return { ...m, inc, exp, inv, margin: inc - exp, free: inc - exp - inv }; });
   const withInc = rows.filter(r => r.inc > 0);
-  const buffer = Number(S.settings.saveBuffer ?? 20), emMonths = Number(S.settings.emergencyMonths ?? 6), liquidity = Number(S.settings.liquidity || 0);
+  const buffer = Number(S.settings.saveBuffer ?? 20), emMonths = Number(S.settings.emergencyMonths ?? 6), liquidity = Number(S.settings.liquidity || 0), hasLiq = liquidity > 0;
   const mInc = median(withInc.map(r => r.inc)), mExp = median(rows.map(r => r.exp)), mInv = rows.reduce((a, r) => a + r.inv, 0) / (rows.length || 1), margin = mInc - mExp;
   const pac = plannedAll().filter(p => p.active !== false && (p.holdingId || plannedExcluded(p))).reduce((a, p) => a + plannedMonthly(p), 0);
   const investable = Math.max(0, margin * (1 - buffer / 100)), extra = investable - Math.max(pac, mInv);
-  const emTarget = emMonths * mExp, emGap = Math.max(0, emTarget - liquidity);
+  const emTarget = emMonths * mExp, emGap = hasLiq ? Math.max(0, emTarget - liquidity) : 0;
   const { svg: chart } = trendBars(rows.map((r, i) => ({ label: r.label, v: Math.max(0, r.margin), on: i === rows.length - 1 })), { aria: 'Margine mensile: entrate meno spese' });
   if (!withInc.length) return `<div class="empty">Per calcolare la quota investibile servono le entrate (es. lo stipendio) registrate negli ultimi mesi.</div>`;
   const big = (v, l, color) => `<div class="stat"><span class="v num" style="${color ? 'color:' + color : ''}">${v}</span><span class="small muted">${l}</span></div>`;
@@ -145,7 +147,7 @@ function exRisparmio() {
           <span class="small muted">Quota investibile (margine meno il ${buffer}% tenuto come liquidità)</span>
           <span class="num" style="font-size:30px;font-weight:700">${fmtMoney(investable)}<span class="small muted" style="font-size:13px"> al mese</span></span>
           <span style="font-weight:700;color:${extra >= 0 ? 'var(--accent)' : 'var(--warn)'}">${extra >= 1 ? `Puoi aumentare gli investimenti di circa ${fmtMoney(extra)} al mese.` : extra <= -1 ? `Oggi investi ${fmtMoney(-extra)} al mese più della quota suggerita: stai usando parte del cuscinetto.` : 'Investi già circa la quota suggerita.'}</span>
-          ${emGap > 0 ? `<span class="small" style="color:var(--warn)">Prima conviene completare il fondo di emergenza: mancano ${fmtMoney(emGap)} (obiettivo ${emMonths} mesi di spese = ${fmtMoney(emTarget)}). Al ritmo del margine servono circa ${Math.ceil(emGap / Math.max(margin, 1))} mesi.</span>` : liquidity ? `<span class="small muted">Fondo di emergenza a posto: hai ${fmtMoney(liquidity)} di liquidità, l'obiettivo è ${fmtMoney(emTarget)} (${emMonths} mesi di spese).</span>` : ''}
+          ${emGap > 0 ? `<span class="small" style="color:var(--warn)">Prima conviene completare il fondo di emergenza: mancano ${fmtMoney(emGap)} (obiettivo ${emMonths} mesi di spese = ${fmtMoney(emTarget)}). Al ritmo del margine servono circa ${Math.ceil(emGap / Math.max(margin, 1))} mesi.</span>` : liquidity ? `<span class="small muted">Fondo di emergenza a posto: hai ${fmtMoney(liquidity)} di liquidità, l'obiettivo è ${fmtMoney(emTarget)} (${emMonths} mesi di spese).</span>` : `<span class="small muted">Inserisci qui sotto la liquidità che hai sui conti per verificare il fondo di emergenza (obiettivo ${fmtMoney(emTarget)}).</span>`}
         </div>
         <div class="ex-filters">
           <label class="ex-f"><span>Cuscinetto di liquidità (%)</span><input type="number" min="0" max="90" value="${buffer}" onchange="exSavingsSet('saveBuffer',+this.value)"></label>
