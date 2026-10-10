@@ -78,7 +78,7 @@ function exSpese() {
     ${cs.sort((a, b) => byCat[b] - byCat[a]).map(id => `<tr><td style="padding-left:26px"><button onclick="EX.cat='${id}';route()">${esc(catById(id).name)}</button></td><td class="num">${fmtMoney(byCat[id], false)}</td><td class="num muted">${tot ? Math.round(byCat[id] / tot * 100) : 0}%</td><td class="num muted">${cnt[id]}</td><td class="num">${CR ? deltaTxt(byCat[id], byCatC[id] || 0) : ''}</td></tr>`).join('')}`; }).join('');
   // Esercenti più frequenti (dalla nota).
   const mk = typeof merchantKey === 'function' ? merchantKey : (x => String(x || '').toLowerCase().trim());
-  const byM = {}; main.filter(e => e.note).forEach(e => { const k = mk(e.note); if (!k) return; const o = byM[k] = byM[k] || { name: e.note, tot: 0, n: 0 }; o.tot += Number(e.amount); o.n++; });
+  const byM = {}; main.filter(e => e.note && e.source !== 'planned').forEach(e => { const k = mk(e.note); if (!k) return; const o = byM[k] = byM[k] || { name: e.note, tot: 0, n: 0 }; o.tot += Number(e.amount); o.n++; });
   const topM = Object.values(byM).sort((a, b) => b.tot - a.tot).slice(0, 10);
   // Movimenti filtrati.
   const sorted = F.slice().sort(EX.sort === 'amount' ? (a, b) => b.amount - a.amount : byWhenDesc).slice(0, 300);
@@ -92,7 +92,7 @@ function exSpese() {
       <div class="card col" style="gap:10px"><span style="font-weight:800">Per gruppo e categoria</span>
         <div class="scroll-x"><table class="tbl"><thead><tr><th>Voce</th><th>€</th><th>%</th><th>Mov.</th><th>${CR ? 'Δ' : ''}</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5" class="muted">Nessun movimento.</td></tr>'}</tbody></table></div>
         <span class="hint">Tocca un gruppo o una categoria per filtrare.</span></div>
-      <div class="card col" style="gap:10px"><span style="font-weight:800">Dove spendi di più</span>
+      <div class="card col" style="gap:10px"><span style="font-weight:800">Dove spendi di più</span><span class="hint">Esercenti delle spese registrate a mano o dalle notifiche; i pagamenti pianificati sono esclusi.</span>
         ${topM.length ? `<table class="tbl"><thead><tr><th>Esercente / nota</th><th>€</th><th>Volte</th></tr></thead><tbody>${topM.map(m => `<tr><td><button onclick="exSet('q',${esc(JSON.stringify(m.name))})">${esc(m.name)}</button></td><td class="num">${fmtMoney(m.tot, false)}</td><td class="num muted">${m.n}</td></tr>`).join('')}</tbody></table>` : '<span class="muted small">Aggiungi una nota (esercente) ai movimenti per vedere questa classifica.</span>'}</div>
       ${exRecurring()}
       <div class="card col ex-wide" style="gap:10px"><div class="row between"><span style="font-weight:800">Movimenti (${F.length})</span><span class="row" style="gap:8px"><button class="chip ${EX.sort === 'date' ? 'on' : ''}" onclick="exSet('sort','date')">Data</button><button class="chip ${EX.sort === 'amount' ? 'on' : ''}" onclick="exSet('sort','amount')">Importo</button><button class="chip" onclick="exExportCSV()">CSV</button></span></div>
