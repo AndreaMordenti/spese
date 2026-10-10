@@ -108,6 +108,9 @@ async function nativeBoot() {
     N.addListener('localNotificationActionPerformed', a => { const r = a.notification && a.notification.extra && a.notification.extra.route; if (r) go(r); });
   }
   if (W) { try { const { route } = await W.consumeRoute(); if (route) go(route); } catch (e) { /* nessuna schermata richiesta */ } }
+  // Pagamenti letti dalle notifiche: all'avvio e ogni volta che si torna nell'app.
+  const pull = async () => { if (await ingestNotifications() && ['#home', '#inbox', ''].includes(location.hash)) route(); };
+  pull(); document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
   onDataSaved();
 }
 async function enableNotifications() {

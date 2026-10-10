@@ -101,6 +101,9 @@ function load() {
     holdings: s.holdings || [],
     trades: s.trades || [],
     snaps: s.snaps || [],
+    inbox: s.inbox || [],
+    rules: s.rules || [],
+    notifLog: s.notifLog || [],
     settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null, proxyUrl: '', plannedSeeded: false }, s.settings || {}),
     meta: s.meta || { driveFileId: null, lastSync: null },
   };
@@ -263,6 +266,7 @@ function viewHome() {
         <div class="col" style="gap:2px;text-align:left"><span style="font-size:14px;font-weight:700">${esc(c.name)}</span><span class="small muted">${fmtMoney(spent)} di ${fmtInt(c.budget)}</span></div>
         <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : c.color}"></div></div>
       </button>`; }).join('')}</div>` : ''}
+    ${typeof inboxHomeBlock === 'function' ? inboxHomeBlock() : ''}
     ${plannedHomeBlock()}
     <div class="col" style="gap:14px">
       <div class="row between"><span class="section-title">Ultimi movimenti</span><a href="#spese" class="small" style="color:var(--accent)">Vedi tutti</a></div>
@@ -403,7 +407,10 @@ function saveDraft() {
   } else {
     S.expenses.push({ id: uid(), type: draft.type, amount, cat: draft.cat, note: draft.note.trim(), date: draft.date, time: draft.time, account: draft.account, source: draft.source, updatedAt: now });
   }
-  save(); draft = null; toast('Salvato'); go('#home');
+  // Pagamento arrivato da una notifica: lo segna come confermato e ricorda la categoria per quell'esercente.
+  if (draft.inboxId && typeof inboxById === 'function') { const x = inboxById(draft.inboxId); if (x) { learnRule(x.merchant, draft.cat); Object.assign(x, { status: 'done', updatedAt: now }); } }
+  const back = draft.inboxId ? '#inbox' : '#home';
+  save(); draft = null; toast('Salvato'); go(back);
 }
 function deleteExpense(id) {
   if (!confirm('Eliminare questo movimento?')) return;
@@ -840,7 +847,7 @@ const Drive = {
     const c = await (await this.api('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: this.FILE, parents: ['appDataFolder'], mimeType: 'application/json' }) })).json();
     S.meta.driveFileId = c.id; return c.id;
   },
-  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
+  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, inbox: S.inbox, rules: S.rules, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
   mergeArr(local, remote) {
     const m = new Map(); [...local, ...remote].forEach(x => { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); });
     return [...m.values()];
@@ -859,14 +866,14 @@ const Drive = {
       if (interactive) await this.init(true); else await this.ensureToken();
       const id = await this.findFile();
       const remote = await (await this.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json().catch(() => null);
-      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
+      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
       const before = sig();
       if (remote && remote.version) {
         S.expenses = this.mergeArr(S.expenses, remote.expenses || []);
         S.categories = this.mergeArr(S.categories, remote.categories || []);
         S.habits = this.mergeArr(S.habits, remote.habits || []);
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
-        ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
+        ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
         if ((remote.categories || []).length) dropPristineDefaults();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
         if (remote.settings && (remote.settingsAt || 0) > (S.meta.settingsAt || 0)) { Object.assign(S.settings, pickSettings(remote.settings)); S.meta.settingsAt = remote.settingsAt; S.meta.settingsHash = JSON.stringify(pickSettings(S.settings)); }
@@ -939,6 +946,7 @@ function viewSettings() {
     ${det('cats', 'Categorie e budget', categories)}
     ${det('plan', 'Pagamenti pianificati', `<button class="btn sm" onclick="go('#pianificati')">${svg('repeat', 18)} Gestisci i pagamenti pianificati</button><span class="hint">${live(S.planned).filter(p => p.active !== false).length} attivi. Si registrano da soli alla data di scadenza.</span>`)}
     ${det('notif', 'Notifiche e widget', notifSettings())}
+    ${det('nread', 'Pagamenti letti dalle notifiche', notifReadSettings())}
     ${det('pf', 'Portafoglio e prezzi', portfolioSettings())}
     ${det('lock', 'Blocco app', lockSection())}
     ${det('gdrive', 'Google Drive', gdrive)}
@@ -1124,7 +1132,7 @@ function applyPlan(plan) {
     S.expenses = Drive.mergeArr(S.expenses, b.expenses || []);
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
-    ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
+    ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
     // Pagamenti pianificati da togliere comunque (es. il PAC unico sostituito dai PAC per strumento), anche se modificati dopo.
     (b.removePlanned || []).forEach(id => { const p = S.planned.find(x => x.id === id); if (p && !p.deleted) { p.deleted = true; p.updatedAt = Date.now(); } });
     // Pagamenti pianificati importati con il nome della categoria (es. dal file di Trade Republic): la risolve qui.

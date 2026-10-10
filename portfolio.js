@@ -46,6 +46,8 @@ const Quotes = {
   // Yahoo Finance non ammette chiamate dirette dal browser: passa da un proxy (il tuo, se impostato; altrimenti uno pubblico).
   async json(url) {
     const tpl = (S.settings.proxyUrl || '').trim(), tries = []; let err = 'rete';
+    // Nell'app Android le richieste sono native: Yahoo si chiama direttamente, il proxy serve solo come riserva.
+    if (typeof Native !== 'undefined' && Native.on) tries.push(url);
     if (tpl) tries.push(tpl.includes('{url}') ? tpl.replace('{url}', encodeURIComponent(url)) : tpl + encodeURIComponent(url));
     tries.push('https://api.allorigins.win/raw?url=' + encodeURIComponent(url));
     for (const t of tries) { try { const r = await fetch(t); if (r.ok) return await r.json(); err = 'HTTP ' + r.status; } catch (e) { err = 'rete'; } }
@@ -79,8 +81,15 @@ const Quotes = {
   },
 };
 let pfBusy = false, pfAutoDone = false;
+// Ticker noti per ISIN: completano gli strumenti importati senza ticker (es. da Trade Republic).
+const KNOWN_TICKERS = { IE000BI8OT95: 'WRDU.AS', IE00B5BMR087: 'SXR8.DE', LU0378818131: 'DBZB.DE', IE00BKM4GZ66: 'IS3N.DE', IE00B4L5Y983: 'EUNL.DE', IE00BK5BQT80: 'VWCE.DE' };
+function fillTickers() {
+  let n = 0; holdingsLive().forEach(h => { if (!h.symbol && KNOWN_TICKERS[h.isin]) { Object.assign(h, { symbol: KNOWN_TICKERS[h.isin], manual: false, updatedAt: Date.now() }); n++; } });
+  if (n) save();
+}
 async function pfRefresh(silent) {
-  if (pfBusy) return; const hs = holdingsLive().filter(h => h.symbol && !h.manual && position(h).qty > 0);
+  if (pfBusy) return;
+  fillTickers(); const hs = holdingsLive().filter(h => h.symbol && !h.manual && position(h).qty > 0);
   if (!hs.length) { if (!silent) toast('Nessuno strumento con ticker da aggiornare'); return; }
   pfBusy = true; if (!silent) toast('Aggiorno i prezzi…', 8000); let ok = 0, err = '';
   for (const h of hs) { try { await Quotes.refresh(h); ok++; } catch (e) { err = e.message; } }

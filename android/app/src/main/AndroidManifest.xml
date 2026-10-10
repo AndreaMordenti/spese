@@ -34,6 +34,12 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
+        <!-- Lettura delle notifiche di pagamento (solo le app scelte in Slow) -->
+        <service android:name=".SlowNotificationListener" android:label="Slow: lettura pagamenti"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+
         <!-- Widget della home -->
         <receiver android:name=".SlowWidgets$MonthWidget" android:label="Slow · Mese" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
