@@ -108,6 +108,7 @@ function load() {
 let saveTimer = null;
 function save(sync = true) {
   localStorage.setItem(KEY, JSON.stringify(S));
+  if (typeof onDataSaved === 'function') onDataSaved(); // widget e notifiche nell'app Android
   if (sync && Drive.ready()) { clearTimeout(saveTimer); saveTimer = setTimeout(() => Drive.sync().catch(() => {}), 1500); }
 }
 const live = arr => arr.filter(x => !x.deleted);
@@ -892,6 +893,7 @@ function viewSettings() {
     ${det('data', 'Dati e importazione', data)}
     ${det('cats', 'Categorie e budget', categories)}
     ${det('plan', 'Pagamenti pianificati', `<button class="btn sm" onclick="go('#pianificati')">${svg('repeat', 18)} Gestisci i pagamenti pianificati</button><span class="hint">${live(S.planned).filter(p => p.active !== false).length} attivi. Si registrano da soli alla data di scadenza.</span>`)}
+    ${det('notif', 'Notifiche e widget', notifSettings())}
     ${det('pf', 'Portafoglio e prezzi', portfolioSettings())}
     ${det('lock', 'Blocco app', lockSection())}
     ${det('gdrive', 'Google Drive', gdrive)}
@@ -1076,6 +1078,8 @@ function applyPlan(plan) {
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
     ['planned', 'holdings', 'trades', 'snaps'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
+    // Pagamenti pianificati da togliere comunque (es. il PAC unico sostituito dai PAC per strumento), anche se modificati dopo.
+    (b.removePlanned || []).forEach(id => { const p = S.planned.find(x => x.id === id); if (p && !p.deleted) { p.deleted = true; p.updatedAt = Date.now(); } });
     // Pagamenti pianificati importati con il nome della categoria (es. dal file di Trade Republic): la risolve qui.
     live(S.planned).forEach(p => { if (p.catName && catById(p.cat) === UNKNOWN_CAT) { let c = findCategory(p.catName, p.type); if (!c) { c = ensureCategory(p.catName, p.type); if (p.catExcluded) c.excluded = true; } p.cat = c.id; } if (p.account && !S.accounts.includes(p.account)) S.accounts.push(p.account); });
     S.accounts = [...new Set([...S.accounts, ...(b.accounts || [])])];
@@ -1254,6 +1258,7 @@ function boot() {
   postPlanned();
   snapshotPortfolio();
   route();
+  if (typeof nativeBoot === 'function') nativeBoot();
   // Nell'app Android i file sono già nel pacchetto: il service worker serve solo alla versione web.
   const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (!isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

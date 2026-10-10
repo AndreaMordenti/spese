@@ -1,6 +1,6 @@
 // Service worker: app disponibile offline, API sempre dalla rete.
-const CACHE = 'spese-v10';
-const SHELL = ['./', './index.html', './app.js', './trends.js', './insights.js', './planned.js', './portfolio.js', './boot.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
+const CACHE = 'spese-v11';
+const SHELL = ['./', './index.html', './app.js', './trends.js', './insights.js', './planned.js', './portfolio.js', './native.js', './boot.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-512-maskable.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

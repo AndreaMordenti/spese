@@ -4,4 +4,11 @@
     <string name="title_activity_main">Slow</string>
     <string name="package_name">com.andreamordenti.slow</string>
     <string name="custom_url_scheme">com.andreamordenti.slow</string>
+    <string name="w_upcoming">Prossimi pagamenti</string>
+    <string name="w_portfolio">Portafoglio</string>
+    <string name="w_add">Nuova spesa</string>
+    <string name="w_desc_month">Speso del mese rispetto al budget</string>
+    <string name="w_desc_upcoming">Le prossime scadenze dei pagamenti pianificati</string>
+    <string name="w_desc_portfolio">Valore del portafoglio e variazione</string>
+    <string name="w_desc_add">Registra una nuova spesa con un tocco</string>
 </resources>

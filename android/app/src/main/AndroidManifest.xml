@@ -33,9 +33,28 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Widget della home -->
+        <receiver android:name=".SlowWidgets$MonthWidget" android:label="Slow · Mese" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_month_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$UpcomingWidget" android:label="Slow · Prossimi pagamenti" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_upcoming_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$PortfolioWidget" android:label="Slow · Portafoglio" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_portfolio_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$QuickAddWidget" android:label="Slow · Nuova spesa" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_add_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/w_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:gravity="center_vertical" android:padding="16dp" android:background="@drawable/widget_bg">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/w_portfolio" android:textColor="#9AA0AE" android:textSize="12sp" android:textStyle="bold"/>
+    <TextView android:id="@+id/w_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="#F3F4F6" android:textSize="26sp" android:textStyle="bold" android:layout_marginTop="2dp"/>
+    <TextView android:id="@+id/w_sub" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#D4FF5B" android:textSize="13sp" android:textStyle="bold"/>
+    <TextView android:id="@+id/w_day" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textColor="#9AA0AE" android:textSize="12sp" android:textStyle="bold"/>
+</LinearLayout>

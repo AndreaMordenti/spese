@@ -2,8 +2,16 @@
   "appId": "com.andreamordenti.slow",
   "appName": "Slow",
   "webDir": "www",
-  "android": { "backgroundColor": "#0D0E12" },
+  "android": {
+    "backgroundColor": "#0D0E12"
+  },
   "plugins": {
-    "CapacitorHttp": { "enabled": true }
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_slow",
+      "iconColor": "#D4FF5B"
+    }
   }
 }
