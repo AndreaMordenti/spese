@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node scripts/build-web.js",
     "android": "npm run build && npx cap sync android",
-    "apk": "npm run android && cd android && ./gradlew assembleDebug"
+    "apk": "npm run android && cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ./gradlew assembleDebug",
+    "install-phone": "sh scripts/install-phone.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

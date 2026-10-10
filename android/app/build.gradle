@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// Chiave di firma di Slow: sta fuori dal repository (pubblico), in ~/.slow/keystore.properties.
+// Deve restare sempre la stessa, altrimenti Android non accetta l'aggiornamento e bisogna reinstallare.
+def slowKeyFile = new File(System.getProperty('user.home'), '.slow/keystore.properties')
+def slowKey = new Properties()
+if (slowKeyFile.exists()) slowKeyFile.withInputStream { slowKey.load(it) }
+
 android {
     namespace = "com.andreamordenti.slow"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +22,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        slow {
+            if (slowKeyFile.exists()) {
+                storeFile file(slowKey['storeFile'])
+                storePassword slowKey['storePassword']
+                keyAlias slowKey['keyAlias']
+                keyPassword slowKey['keyPassword']
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (slowKeyFile.exists()) signingConfig signingConfigs.slow
+        }
         release {
+            if (slowKeyFile.exists()) signingConfig signingConfigs.slow
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
