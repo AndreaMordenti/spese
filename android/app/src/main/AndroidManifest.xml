@@ -57,6 +57,23 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_add_info" />
         </receiver>
+
+        <receiver android:name=".SlowWidgets$TodayWidget" android:label="Slow · Oggi puoi spendere" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$PaceWidget" android:label="Slow · Ritmo del mese" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_pace_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$DiaryWidget" android:label="Slow · Diario di oggi" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_diary_info" />
+        </receiver>
+        <receiver android:name=".SlowWidgets$InboxWidget" android:label="Slow · Da confermare" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_inbox_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

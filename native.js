@@ -16,9 +16,37 @@ function widgetData() {
   return {
     month: { label: monthLabel(key), spent: fmtMoney(spent), pct, sub: budget ? `di ${fmtMoney(budget)} · ${pct}%` : 'nessun budget impostato' },
     upcoming: up,
-    portfolio: T.value ? { value: fmtMoney(T.value), gain: `${sgnMoney(T.gain)} (${sgnPct(T.pct)})`, day: T.day ? `Oggi ${sgnMoney(T.day)}` : '' } : null,
+    portfolio: T.value ? { value: fmtMoney(T.value), gain: `${sgnMoney(T.gain)} (${sgnPct(T.pct)})`, day: T.day ? `Oggi ${sgnMoney(T.day)}` : '', balance: (() => { const B = balanceData(), t = balTarget(); return B.tot ? `Azionario ${(B.eqPct * 100).toFixed(0)}% (fascia ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%)` : ''; })() } : null,
+    today: todayWidget(key, spent, budget),
+    pace: (() => { try { return paceWidget(key, budget); } catch (e) { return null; } })(),
+    diary: activeHabits().slice(0, 4).map(h => { const st = streaks(habitStats(h).dates), done = isDone(h.id, todayISO()); return { done, line: `${done ? '✓' : '○'} ${h.name}${st.cur > 1 ? ` · ${st.cur} giorni di fila` : st.wcur > 1 ? ` · ${st.wcur} settimane` : ''}` }; }),
+    inbox: (() => { const l = typeof inboxPending === 'function' ? inboxPending() : []; return { count: String(l.length), sub: l.length ? `Ultimo: ${l[0].merchant || 'pagamento'} ${fmtMoney(l[0].amount)}` : 'Niente da confermare' }; })(),
     updated: Date.now(),
   };
+}
+// Budget del giorno: quello che resta del mese (tolti i pianificati ancora in arrivo) diviso i giorni rimasti.
+function todayWidget(key, spent, budget) {
+  const t = todayISO(), [y, m] = key.split('-').map(Number), dim = new Date(y, m, 0).getDate(), daysLeft = dim - Number(t.slice(8)) + 1;
+  const todaySpent = sumBy(monthExpenses(key).filter(e => e.date === t));
+  if (!budget) return { title: 'Speso oggi', value: fmtMoney(todaySpent), over: false, sub: `Questo mese ${fmtMoney(spent)}` };
+  const comingPlanned = upcomingPlanned(daysLeft).filter(u => u.d.slice(0, 7) === key && (u.p.type || 'expense') === 'expense' && !plannedExcluded(u.p)).reduce((a, u) => a + Number(u.p.amount || 0), 0);
+  const perDay = (budget - (spent - todaySpent) - comingPlanned) / daysLeft, left = perDay - todaySpent;
+  return { title: 'Oggi puoi spendere', value: fmtMoney(Math.max(0, left)), over: left < 0, sub: left < 0 ? `Oltre di ${fmtMoney(-left)} · speso oggi ${fmtMoney(todaySpent)}` : `Speso oggi ${fmtMoney(todaySpent)} · ${daysLeft} giorni alla fine del mese` };
+}
+// Grafico del ritmo del mese, disegnato su canvas e passato al widget come immagine PNG.
+function paceWidget(key, budget) {
+  const [y, m] = key.split('-').map(Number), dim = new Date(y, m, 0).getDate(), prevK = localISO(new Date(y, m - 2, 1)).slice(0, 7), pdim = new Date(y, m - 1, 0).getDate(), upto = Number(todayISO().slice(8));
+  const cum = (k, n) => { const per = Array(n + 1).fill(0); monthExpenses(k).forEach(e => { per[Number(e.date.slice(8))] += Number(e.amount || 0); }); let s = 0; return per.map((v, i) => (i ? (s += v) : 0)); };
+  const cur = cum(key, dim), prev = cum(prevK, pdim), max = Math.max(cur[upto], prev[pdim], budget || 0, 1) * 1.08;
+  const W = 640, H = 260, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const X = d => 8 + (W - 16) * (d - 1) / (dim - 1), Yv = v => H - 10 - (H - 20) * v / max;
+  const line = (arr, n, color, width, dash) => { g.beginPath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = width; g.lineCap = 'round'; g.lineJoin = 'round'; for (let d = 1; d <= n; d++) { const px = X(Math.min(d, dim)), py = Yv(arr[d]); d === 1 ? g.moveTo(px, py) : g.lineTo(px, py); } g.stroke(); };
+  if (budget) { g.setLineDash([4, 8]); g.strokeStyle = '#FFB36B'; g.lineWidth = 3; g.beginPath(); g.moveTo(8, Yv(budget)); g.lineTo(W - 8, Yv(budget)); g.stroke(); }
+  line(prev, Math.min(pdim, dim), '#6B7280', 4, [3, 9]);
+  line(cur, upto, '#D4FF5B', 7);
+  g.setLineDash([]); g.fillStyle = '#D4FF5B'; g.beginPath(); g.arc(X(upto), Yv(cur[upto]), 9, 0, 2 * Math.PI); g.fill();
+  const same = prev[Math.min(upto, pdim)], d = cur[upto] - same;
+  return { title: `${monthLabel(key)} · ${fmtMoney(cur[upto])}`, sub: `${d >= 0 ? '+' : '-'}${fmtMoney(Math.abs(d))} rispetto allo stesso giorno di ${shortMonth(prevK)}${budget ? ' · budget ' + fmtMoney(budget) : ''}`, img: c.toDataURL('image/png').split(',')[1] };
 }
 function pushWidgets() { const w = Native.plugin('SlowWidget'); if (w) w.update({ data: JSON.stringify(widgetData()) }).catch(() => {}); }
 
