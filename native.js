@@ -100,7 +100,7 @@ async function nativeBoot() {
   }
   if (W) { try { const { route } = await W.consumeRoute(); if (route) go(route); } catch (e) { /* nessuna schermata richiesta */ } }
   // Pagamenti letti dalle notifiche: all'avvio e ogni volta che si torna nell'app.
-  const pull = async () => { if (await ingestNotifications() && ['#home', '#inbox', ''].includes(location.hash)) route(); };
+  const pull = async () => { const n = (await ingestNotifications()) + (typeof ingestSms === 'function' ? await ingestSms() : 0); if (n && ['#home', '#inbox', ''].includes(location.hash)) route(); };
   pull(); document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
   onDataSaved();
 }

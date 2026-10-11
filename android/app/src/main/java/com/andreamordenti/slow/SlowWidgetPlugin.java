@@ -15,9 +15,15 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.getcapacitor.PermissionState;
+import android.Manifest;
+import android.database.Cursor;
+import android.net.Uri;
 
 // Ponte tra l'app web e i widget: l'app manda i dati già formattati, i widget li mostrano.
-@CapacitorPlugin(name = "SlowWidget")
+@CapacitorPlugin(name = "SlowWidget", permissions = { @Permission(strings = { Manifest.permission.READ_SMS }, alias = "sms") })
 public class SlowWidgetPlugin extends Plugin {
 
     @PluginMethod
@@ -63,6 +69,41 @@ public class SlowWidgetPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("token", res.getAccessToken());
         call.resolve(ret);
+    }
+
+    // ---------- SMS delle banche ----------
+    @PluginMethod
+    public void smsAccess(PluginCall call) {
+        JSObject ret = new JSObject(); ret.put("granted", getPermissionState("sms") == PermissionState.GRANTED); call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestSms(PluginCall call) {
+        if (getPermissionState("sms") == PermissionState.GRANTED) { smsAccess(call); return; }
+        requestPermissionForAlias("sms", call, "smsPermCallback");
+    }
+
+    @PermissionCallback
+    private void smsPermCallback(PluginCall call) { smsAccess(call); }
+
+    // Legge solo gli SMS ricevuti dai mittenti indicati, dopo la data indicata.
+    @PluginMethod
+    public void readSms(PluginCall call) {
+        if (getPermissionState("sms") != PermissionState.GRANTED) { call.reject("permesso SMS non concesso"); return; }
+        long since = call.getLong("since", 0L);
+        String[] senders = call.getString("senders", "").split("\\|");
+        JSArray out = new JSArray();
+        StringBuilder where = new StringBuilder("date > ? AND (");
+        String[] args = new String[senders.length + 1];
+        args[0] = String.valueOf(since);
+        for (int i = 0; i < senders.length; i++) { where.append(i > 0 ? " OR " : "").append("address = ?"); args[i + 1] = senders[i]; }
+        where.append(")");
+        try (Cursor c = getContext().getContentResolver().query(Uri.parse("content://sms/inbox"), new String[] { "address", "body", "date" }, where.toString(), args, "date ASC")) {
+            while (c != null && c.moveToNext()) {
+                JSObject o = new JSObject(); o.put("address", c.getString(0)); o.put("body", c.getString(1)); o.put("date", c.getLong(2)); out.put(o);
+            }
+        } catch (Exception e) { call.reject("lettura SMS non riuscita: " + e.getMessage()); return; }
+        JSObject ret = new JSObject(); ret.put("items", out); call.resolve(ret);
     }
 
     // ---------- Lettura notifiche di pagamento ----------

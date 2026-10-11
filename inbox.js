@@ -10,7 +10,7 @@ const inboxPending = () => live(S.inbox || []).filter(x => x.status === 'pending
 
 // ---------- Lettura del testo ----------
 // Regole generiche per le frasi tipiche ("Hai pagato 4,50 € a Bar Centrale", "Pagamento di 12,00 EUR presso ESSELUNGA"…).
-const SECRET_RE = /\b(codice|otp|password|pin|passcode)\b/i;
+const SECRET_RE = /\b(codice|otp|password|pin|passcode|cvv|cvc)\b/i;
 const NOT_PAYMENT_RE = /(saldo disponibile|estratto conto|promo|offerta|sconto del|cashback disponibile|invita|accedi|nuovo dispositivo)/i;
 const INCOME_RE = /(hai ricevuto|ricevut[oi]|accredit|rimbors|bonifico in (arrivo|entrata)|in entrata|refund|received)/i;
 function parseAmount(s) {
@@ -63,6 +63,71 @@ function learnRule(merchant, cat) {
   if (r) Object.assign(r, { cat, deleted: false, updatedAt: Date.now() }); else S.rules.push({ id: 'r-' + key.replace(/ /g, '-'), key, cat, updatedAt: Date.now() });
 }
 
+// ---------- Un pagamento letto → lista "Da confermare" (notifiche e SMS) ----------
+function addInbox(p, at, app) {
+  S.inbox = S.inbox || [];
+  const d = new Date(at), date = p.date || localISO(d), time = p.time || d.toTimeString().slice(0, 5), id = 'n-' + at + '-' + Math.round(p.amount * 100);
+  if (S.inbox.some(x => x.id === id)) return false;
+  // Stesso pagamento da due fonti (es. app e SMS della banca) a pochi minuti: uno solo.
+  const twin = S.inbox.find(x => !x.deleted && Math.abs(x.amount - p.amount) < 0.01 && Math.abs(x.at - at) < 15 * 60000);
+  if (twin) { if (!twin.apps.includes(app)) { twin.apps.push(app); twin.updatedAt = Date.now(); if (!twin.merchant && p.merchant) twin.merchant = p.merchant; } return false; }
+  // Già registrato (a mano, da un pianificato o da un import) nello stesso giorno o in quello prima/dopo?
+  const dup = live(S.expenses).find(e => Math.abs(Number(e.amount) - p.amount) < 0.01 && typeOf(e) === p.type && Math.abs(isoDay(e.date) - isoDay(date)) <= 1);
+  S.inbox.push({ id, at, date, time, amount: p.amount, merchant: p.merchant, type: p.type, apps: [app], cat: guessCat(p.merchant, p.type), dup: dup ? dup.id : null, status: 'pending', updatedAt: Date.now() });
+  return true;
+}
+
+// ---------- SMS delle banche ----------
+const SMS_SENDERS = { 'Nexi': 'Nexi', 'MB Premier': 'Mediobanca Premier', 'CheBanca!': 'Mediobanca Premier', 'ING': 'ING', 'SMS SELLA': 'Banca Sella', 'Revolut': 'Revolut', 'BBVA': 'BBVA', 'illimity': 'illimity' };
+const smsSenders = () => (S.settings.smsSenders || Object.keys(SMS_SENDERS));
+const num = t => { t = String(t).replace(/\s/g, ''); if (/,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); else if (/\.\d{3}$/.test(t)) t = t.replace(/\./g, ''); return Math.round(parseFloat(t) * 100) / 100 || 0; };
+const isMe = who => { const me = (S.settings.name || '').toLowerCase().trim(); return !!me && who.toLowerCase().replace(/\s+/g, ' ').includes(me); };
+// Formati reali visti negli SMS (Nexi, Mediobanca/CheBanca!), poi le regole generiche delle notifiche.
+function parseSms(sender, body, at) {
+  if (SECRET_RE.test(body)) return { secret: true };
+  if (/addebitat|estratto conto|riepilogo|saldo/i.test(body)) return null; // addebito mensile della carta: le spese sono già contate una per una
+  const y = new Date(at).getFullYear(), pad = v => String(v).padStart(2, '0');
+  let m = body.match(/autorizzazione\s+EUR\s+([\d.,]+)\s+(\d{2})\/(\d{2})\s+(\d{2})[.:](\d{2})\s+-\s+(.+?)\s+-\s/i);
+  if (m) { const dd = `${m[3] === '12' && new Date(at).getMonth() === 0 ? y - 1 : y}-${m[3]}-${m[2]}`; return { amount: num(m[1]), merchant: m[6].replace(/\s+/g, ' ').trim(), type: 'expense', date: dd, time: `${m[4]}:${m[5]}` }; }
+  if ((m = body.match(/prelievo di EUR\s+([\d.,]+)/i))) return { amount: num(m[1]), merchant: 'Prelievo contanti', type: 'expense' };
+  if ((m = body.match(/bonifico di\s+([\d.,]+)\s*Euro.*?a favore di\s+(.+?)(?:\s+in data|\s+da Conto|\.\s*Data|\.$)/i))) {
+    const by = (body.match(/^(.+?)\s+ha richiesto/i) || [])[1] || '', norm = v => v.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (isMe(m[2]) || (by && norm(by) === norm(m[2]))) return null; // giroconto verso un tuo conto
+    return { amount: num(m[1]), merchant: 'Bonifico a ' + m[2].trim(), type: 'expense' };
+  }
+  return parseNotif({ title: sender, text: body });
+}
+async function ingestSms(monthsBack) {
+  const W = Native.plugin('SlowWidget'); if (!W) return 0;
+  try { if (!(await W.smsAccess()).granted) return 0; } catch (e) { return 0; }
+  const since = monthsBack ? Date.now() - monthsBack * 30.44 * 864e5 : (S.settings.smsSince || Date.now() - 7 * 864e5);
+  let items = [];
+  try { items = (await W.readSms({ since: Math.round(since), senders: smsSenders().join('|') })).items || []; } catch (e) { return 0; }
+  S.notifLog = S.notifLog || []; let added = 0, last = S.settings.smsSince || 0;
+  items.forEach(sm => {
+    last = Math.max(last, sm.date);
+    const p = parseSms(sm.address, sm.body, sm.date);
+    if (p && p.secret) return;
+    if (!monthsBack) S.notifLog.unshift({ at: sm.date, app: 'SMS ' + sm.address, title: sm.address, text: sm.body, read: p ? `-${p.amount} ${p.merchant}` : 'ignorato' });
+    if (p && addInbox(p, sm.date, SMS_SENDERS[sm.address] || sm.address)) added++;
+  });
+  S.settings.smsSince = last; S.notifLog = S.notifLog.slice(0, 60);
+  if (items.length) save();
+  return added;
+}
+async function smsEnable() {
+  const W = Native.plugin('SlowWidget'); if (!W) return;
+  const r = await W.requestSms();
+  if (!r.granted) return toast('Permesso SMS negato: puoi concederlo dalle impostazioni di Android', 3500);
+  if (!S.settings.smsSince) S.settings.smsSince = Date.now() - 7 * 864e5;
+  const n = await ingestSms(); toast(n ? `${n} pagamenti trovati negli SMS` : 'Lettura SMS attiva'); route();
+}
+async function smsImportHistory(months) {
+  if (!confirm(`Leggo gli SMS delle banche degli ultimi ${months} mesi e li metto in "Da confermare". Quelli già presenti in Slow vengono segnalati come doppioni. Procedo?`)) return;
+  const n = await ingestSms(months); toast(`${n} pagamenti trovati`, 3000); go('#inbox');
+}
+function inboxSkipDups() { inboxPending().filter(x => x.dup).forEach(x => Object.assign(x, { status: 'skip', updatedAt: Date.now() })); save(); route(); }
+
 // ---------- Dalla coda delle notifiche alla lista "Da confermare" ----------
 async function ingestNotifications() {
   const W = Native.plugin('SlowWidget'); if (!W) return 0;
@@ -76,14 +141,7 @@ async function ingestNotifications() {
     if (p && p.secret) return; // codici e password: non si conservano nemmeno nel registro
     S.notifLog.unshift({ at: n.time, app: PAY_APPS[n.pkg] || n.pkg, title: n.title, text: n.text, read: p ? `${p.type === 'income' ? '+' : '-'}${p.amount} ${p.merchant}` : 'ignorata' });
     if (!p) return;
-    const d = new Date(n.time), date = localISO(d), time = d.toTimeString().slice(0, 5), app = PAY_APPS[n.pkg] || 'Notifica';
-    // Stesso pagamento da due app (es. Satispay e banca) a pochi minuti: uno solo.
-    const twin = S.inbox.find(x => !x.deleted && Math.abs(x.amount - p.amount) < 0.01 && Math.abs(x.at - n.time) < 15 * 60000);
-    if (twin) { if (!twin.apps.includes(app)) { twin.apps.push(app); twin.updatedAt = Date.now(); if (!twin.merchant && p.merchant) twin.merchant = p.merchant; } return; }
-    // Già registrato (a mano o da un pagamento pianificato) nello stesso giorno o il precedente?
-    const dup = live(S.expenses).find(e => Math.abs(Number(e.amount) - p.amount) < 0.01 && typeOf(e) === p.type && Math.abs(isoDay(e.date) - isoDay(date)) <= 1);
-    S.inbox.push({ id: 'n-' + n.time + '-' + Math.round(p.amount * 100), at: n.time, date, time, amount: p.amount, merchant: p.merchant, type: p.type, apps: [app], cat: guessCat(p.merchant, p.type), dup: dup ? dup.id : null, status: 'pending', updatedAt: Date.now() });
-    added++;
+    if (addInbox(p, n.time, PAY_APPS[n.pkg] || 'Notifica')) added++;
   });
   S.notifLog = S.notifLog.slice(0, 60);
   save();
@@ -109,6 +167,7 @@ function viewInbox() {
       <span style="font-weight:800">Da confermare</span>
       <span class="chip num">${list.length}</span>
     </div>
+    ${list.filter(x => x.dup).length > 1 ? `<button class="btn sm" onclick="inboxSkipDups()">${svg('x', 18, 2.5)} Scarta quelli già registrati (${list.filter(x => x.dup).length})</button>` : ''}
     ${ready.length > 1 ? `<button class="btn sm" onclick="inboxConfirmAll()">${svg('check', 18, 3)} Conferma tutti quelli con categoria (${ready.length})</button>` : ''}
     ${list.map(inboxRow).join('') || '<div class="empty">Niente da confermare.<br>I pagamenti letti dalle notifiche compaiono qui.</div>'}
     <span class="hint">La categoria scelta per un esercente viene ricordata: la prossima volta la propone da sola.</span>`;
@@ -141,6 +200,7 @@ function inboxHomeBlock() {
 async function notifReadSettingsFill() {
   const W = Native.plugin('SlowWidget'), el = $('#nr-status'); if (!W || !el) return;
   const r = await W.notifAccess(); const on = (r.apps || '').split(',');
+  const sm = $('#sms-status'); if (sm) { const g = (await W.smsAccess()).granted; sm.innerHTML = g ? '<span style="color:var(--accent);font-weight:700">Lettura SMS attiva</span>' : '<span style="color:var(--warn);font-weight:700">Lettura SMS non ancora consentita</span>'; }
   el.innerHTML = r.enabled ? '<span style="color:var(--accent);font-weight:700">Accesso alle notifiche attivo</span>' : '<span style="color:var(--warn);font-weight:700">Accesso alle notifiche non ancora concesso</span>';
   $('#nr-apps').innerHTML = Object.entries(PAY_APPS).map(([pkg, label]) => `<label class="row" style="gap:12px;cursor:pointer"><input type="checkbox" data-pkg="${pkg}" ${on.includes(pkg) ? 'checked' : ''} onchange="notifAppsSave()" style="width:24px;min-height:24px;padding:0"><span style="font-size:14px">${label}</span></label>`).join('');
 }
@@ -157,6 +217,12 @@ function notifReadSettings() {
     <button class="btn sm" onclick="Native.plugin('SlowWidget').openNotifAccess()">Apri "Accesso alle notifiche" di Android</button>
     <span class="hint">Nella schermata di Android attiva <b>Slow</b>. Slow legge solo le app spuntate qui sotto, e solo per trovare i pagamenti: il testo resta sul telefono. I codici di sicurezza (OTP, PIN) vengono scartati senza salvarli.</span>
     <div id="nr-apps" class="col" style="gap:10px"></div>
+    <span style="font-weight:800;margin-top:6px">SMS delle banche</span>
+    <div id="sms-status" class="small">Controllo…</div>
+    <button class="btn sm" onclick="smsEnable()">Consenti la lettura degli SMS</button>
+    <div class="col" style="gap:10px">${Object.keys(SMS_SENDERS).map(s => `<label class="row" style="gap:12px;cursor:pointer"><input type="checkbox" ${smsSenders().includes(s) ? 'checked' : ''} onchange="S.settings.smsSenders=[...document.querySelectorAll('[data-sms]:checked')].map(i=>i.dataset.sms);save(false)" data-sms="${esc(s)}" style="width:24px;min-height:24px;padding:0"><span style="font-size:14px">${esc(s)}</span></label>`).join('')}</div>
+    <div class="row" style="gap:8px">${[3, 6, 12].map(m => `<button class="chip" onclick="smsImportHistory(${m})">Importa ${m} mesi</button>`).join('')}</div>
+    <span class="hint">Slow legge solo gli SMS dei mittenti spuntati. I messaggi con codici, PIN o CVV vengono scartati senza salvarli; gli addebiti mensili della carta e i bonifici verso te stesso sono ignorati. Per riconoscere i giroconti metti il tuo nome in "Profilo e aspetto".</span>
     <button class="btn sm" onclick="go('#inbox')">Vedi i movimenti da confermare (${inboxPending().length})</button>
     <button class="btn sm" onclick="notifLogShare()">Condividi le ultime notifiche lette</button>
     <span class="hint">Se un pagamento non viene letto bene, condividi questo file: serve a migliorare la lettura per quella app.</span>`;
