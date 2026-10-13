@@ -7,11 +7,10 @@ const demoPinCfg = () => { try { return JSON.parse(localStorage.getItem(DEMO_PIN
 const pinField = (id, label) => `<div class="field"><label>${label}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
 function demoEnter() {
   if (!window.crypto || !crypto.subtle) return toast('Serve una connessione sicura (https)');
-  if (Lock.cfg()) return sheet(`<span style="font-weight:800;font-size:18px">Entrare in modalità demo?</span>
-    <span class="hint">Vedrai dati di esempio e niente verrà salvato. Per uscire servirà il PIN del blocco app.</span>
-    <button class="btn primary" onclick="demoGo()">Entra</button>`);
+  // Entrare non chiede nulla. Serve solo sapere quale codice chiederà l'uscita: il PIN del blocco app o il codice demo, scelto una volta sola.
+  if (Lock.cfg() || demoPinCfg()) return demoGo();
   sheet(`<span style="font-weight:800;font-size:18px">Codice per uscire dalla demo</span>
-    <span class="hint">Scegli un codice di 4-6 cifre: servirà per tornare ai tuoi dati. Così puoi dare il telefono a qualcuno senza che veda i tuoi dati.</span>
+    <span class="hint">Scegli una volta sola un codice di 4-6 cifre: servirà solo per uscire dalla demo, entrare non lo chiede. Così puoi dare il telefono a qualcuno senza che veda i tuoi dati.</span>
     ${pinField('d-new', 'Codice')}${pinField('d-new2', 'Ripeti il codice')}
     <button class="btn primary" onclick="demoSetPin()">Entra in modalità demo</button>`);
 }
@@ -32,7 +31,7 @@ async function demoExitCheck() {
   const v = $('#d-pin').value, d = demoPinCfg();
   const ok = Lock.cfg() ? await Lock.check(v) : !!d && (await Lock.hash(v, d.salt)) === d.hash;
   if (!ok) { if (navigator.vibrate) navigator.vibrate([30, 40, 30]); return toast('Codice errato'); }
-  localStorage.removeItem('slow.demo'); localStorage.removeItem(DEMO_PIN); location.hash = '#home'; location.reload();
+  localStorage.removeItem('slow.demo'); location.hash = '#home'; location.reload();
 }
 
 function demoData() {
@@ -90,5 +89,5 @@ function demoData() {
 }
 function demoSettings() {
   return DEMO ? `<span class="hint">Stai guardando dati di esempio. Puoi provare tutto: le modifiche spariscono all'uscita. Per uscire serve il codice.</span><button class="btn sm primary" onclick="demoExit()">Esci dalla demo e torna ai tuoi dati</button>`
-    : `<span class="hint">Mostra l'app con dati di esempio: utile per provarla o farla vedere a qualcuno. Niente viene salvato sul dispositivo né su Drive, e i tuoi dati non vengono toccati.</span><button class="btn sm" onclick="demoEnter()">Entra in modalità demo</button>`;
+    : `<span class="hint">Mostra l'app con dati di esempio: utile per provarla o farla vedere a qualcuno. Entrare è immediato; per uscire serve ${Lock.cfg() ? 'il PIN del blocco app' : demoPinCfg() ? 'il codice demo che hai scelto' : 'un codice che scegli la prima volta'}. Niente viene salvato e i tuoi dati non vengono toccati.</span><button class="btn sm" onclick="demoEnter()">Entra in modalità demo</button>${!Lock.cfg() && demoPinCfg() ? '<button class="btn sm" onclick="localStorage.removeItem(DEMO_PIN);demoEnter()">Cambia il codice demo</button>' : ''}`;
 }

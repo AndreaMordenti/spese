@@ -909,6 +909,20 @@ function det(id, title, body, dflt = false) {
   const open = openSecs[id] === undefined ? dflt : openSecs[id];
   return `<details ${open ? 'open' : ''} ontoggle="openSecs['${id}']=this.open"><summary>${title}</summary><div>${body}</div></details>`;
 }
+// ---------- Novità (note di rilascio) ----------
+// Da aggiornare a ogni rilascio: la prima voce è la più recente.
+const RELEASES = [
+  ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
+  ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
+  ['2026-10-11', ['Lettura degli SMS delle banche, con importazione dello storico', 'Nuovi widget: oggi puoi spendere, ritmo del mese, da confermare']],
+  ['2026-10-10', ['App Android con notifiche e widget', 'Salvataggio automatico su Google Drive, anche dopo l\'offline', 'Versione web impaginata per computer', 'Esplora: analisi filtrabili, quota investibile, diversificazione', 'Pagamenti letti dalle notifiche (Satispay, carte, banche)']],
+  ['2026-10-08', ['L\'app si chiama Slow', 'Tendenze delle spese e analisi del diario']],
+  ['2026-10-06', ['Pagamenti pianificati e portafoglio Trade Republic', 'Bilanciamento azionario/obbligazionario dei PAC', 'Inserimento spese in una schermata, categorie a gruppi', 'Impostazioni nell\'ingranaggio']],
+  ['2026-10-05', ['Analisi a widget, blocco con PIN e impronta', 'Ottimizzazione per Pixel 8a, categorie modificabili']],
+];
+function releasesSection() {
+  return RELEASES.map(([d, items], i) => `<div class="col" style="gap:4px${i ? ';opacity:.75' : ''}"><span class="small" style="font-weight:800">${fmtLong(d, { day: 'numeric', month: 'long', year: 'numeric' })}</span>${items.map(t => `<span class="small muted" style="line-height:1.45">• ${esc(t)}</span>`).join('')}</div>`).join('');
+}
 let catKindView = 'expense';
 const catSettingsRow = (c, counts) => `<button class="item" style="padding:10px 12px" onclick="editCategory('${c.id}')"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:36px;height:36px">${svg(c.icon, 18)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(c.name)}</span><span class="small muted">${counts[c.id] || 0} movimenti${c.excluded ? ' · non conta nelle spese' : ''}</span></div><span class="small muted num">${c.budget ? fmtInt(c.budget) + ' €' : ''}</span></button>`;
 function viewSettings() {
@@ -945,6 +959,7 @@ function viewSettings() {
   return `
     <div class="row between"><span class="title">Impostazioni</span><button class="chip" onclick="history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
     <div class="settings">
+    ${det('news', 'Novità · ' + fmtLong(RELEASES[0][0], { day: 'numeric', month: 'short' }), releasesSection())}
     ${typeof demoSettings === 'function' ? det('demo', DEMO ? 'Modalità demo (attiva)' : 'Modalità demo', demoSettings(), DEMO) : ''}
     ${det('prof', 'Profilo e aspetto', `<div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
