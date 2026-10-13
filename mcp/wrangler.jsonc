@@ -1,0 +1,17 @@
+// Server MCP di Slow su Cloudflare Workers (piano gratuito).
+{
+  "name": "slow-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    // Client web del progetto Google Cloud "Spese": stessa cartella privata di Drive dell'app.
+    "GOOGLE_CLIENT_ID": "1024229130794-s41f7heqdmc489odeq3t1sb5uas63b2o.apps.googleusercontent.com"
+  },
+  // Segreti (si impostano da terminale, non stanno nel repository):
+  //   wrangler secret put GOOGLE_CLIENT_SECRET   wrangler secret put ALLOWED_EMAIL
+  // L'id lo crea "wrangler kv namespace create OAUTH_KV" (vedi README).
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "5effe65e310a4bb79a41220e0d0a7ec1" }],
+  "durable_objects": { "bindings": [{ "name": "MCP_OBJECT", "class_name": "SlowMCP" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SlowMCP"] }]
+}

@@ -19,7 +19,7 @@ function widgetData() {
     portfolio: T.value ? { value: fmtMoney(T.value), gain: `${sgnMoney(T.gain)} (${sgnPct(T.pct)})`, day: T.day ? `Oggi ${sgnMoney(T.day)}` : '', balance: (() => { const B = balanceData(), t = balTarget(); return B.tot ? `Azionario ${(B.eqPct * 100).toFixed(0)}% (fascia ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%)` : ''; })() } : null,
     today: todayWidget(key, spent, budget),
     pace: (() => { try { return paceWidget(key, budget); } catch (e) { return null; } })(),
-    diary: activeHabits().slice(0, 4).map(h => { const st = streaks(habitStats(h).dates), done = isDone(h.id, todayISO()); return { done, line: `${done ? '✓' : '○'} ${h.name}${st.cur > 1 ? ` · ${st.cur} giorni di fila` : st.wcur > 1 ? ` · ${st.wcur} settimane` : ''}` }; }),
+    diary: activeHabits().slice(0, 4).map(h => { const st = streaks(habitStats(h).dates); return { id: h.id, name: h.name, done: isDone(h.id, todayISO()), streak: st.cur > 1 ? ` · ${st.cur} giorni di fila` : st.wcur > 1 ? ` · ${st.wcur} settimane` : '' }; }),
     inbox: (() => { const l = typeof inboxPending === 'function' ? inboxPending() : []; return { count: String(l.length), sub: l.length ? `Ultimo: ${l[0].merchant || 'pagamento'} ${fmtMoney(l[0].amount)}` : 'Niente da confermare' }; })(),
     updated: Date.now(),
   };
@@ -128,7 +128,18 @@ async function nativeBoot() {
   }
   if (W) { try { const { route } = await W.consumeRoute(); if (route) go(route); } catch (e) { /* nessuna schermata richiesta */ } }
   // Pagamenti letti dalle notifiche: all'avvio e ogni volta che si torna nell'app.
-  const pull = async () => { const n = (await ingestNotifications()) + (typeof ingestSms === 'function' ? await ingestSms() : 0); if (n && ['#home', '#inbox', ''].includes(location.hash)) route(); };
+  // Spunte del diario fatte dal widget sulla home: si applicano qui (e vanno su Drive col salvataggio).
+  const diaryPull = async () => {
+    let items = []; try { items = (await W.takeDiaryToggles()).items || []; } catch (e) { return 0; }
+    items.forEach(t => {
+      const logs = live(S.habitLogs).filter(l => l.habitId === t.id && l.date === t.date);
+      if (t.done && !logs.length) S.habitLogs.push({ id: uid(), habitId: t.id, date: t.date, time: '', updatedAt: t.at });
+      if (!t.done) logs.forEach(l => { l.deleted = true; l.updatedAt = t.at; });
+    });
+    if (items.length) { save(); if (location.hash === '#diario') route(); }
+    return items.length;
+  };
+  const pull = async () => { if (W) await diaryPull(); const n = (await ingestNotifications()) + (typeof ingestSms === 'function' ? await ingestSms() : 0); if (n && ['#home', '#inbox', ''].includes(location.hash)) route(); };
   pull(); document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
   onDataSaved();
 }

@@ -2,9 +2,9 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/w_root"
     android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
     android:padding="16dp" android:background="@drawable/widget_bg">
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/w_diary" android:textColor="#9AA0AE" android:textSize="12sp" android:textStyle="bold"/>
-    <TextView android:id="@+id/w_n1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="6dp" android:maxLines="1" android:ellipsize="end"/>
-    <TextView android:id="@+id/w_n2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="6dp" android:maxLines="1" android:ellipsize="end"/>
-    <TextView android:id="@+id/w_n3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="6dp" android:maxLines="1" android:ellipsize="end"/>
-    <TextView android:id="@+id/w_n4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="6dp" android:maxLines="1" android:ellipsize="end"/>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:id="@+id/w_title" android:text="@string/w_diary" android:textColor="#9AA0AE" android:textSize="12sp" android:textStyle="bold"/>
+    <TextView android:id="@+id/w_n1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="2dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:maxLines="1" android:ellipsize="end"/>
+    <TextView android:id="@+id/w_n2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="2dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:maxLines="1" android:ellipsize="end"/>
+    <TextView android:id="@+id/w_n3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="2dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:maxLines="1" android:ellipsize="end"/>
+    <TextView android:id="@+id/w_n4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#F3F4F6" android:textSize="14sp" android:layout_marginTop="2dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:maxLines="1" android:ellipsize="end"/>
 </LinearLayout>

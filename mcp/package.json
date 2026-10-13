@@ -1,0 +1,19 @@
+{
+  "name": "slow-mcp",
+  "private": true,
+  "description": "Server MCP di Slow: Claude e ChatGPT leggono e scrivono i dati dell'app (file su Google Drive).",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run --outdir dist"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.3",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "agents": "^0.28.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
+  }
+}

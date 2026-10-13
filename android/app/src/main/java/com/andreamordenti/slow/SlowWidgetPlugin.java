@@ -143,6 +143,16 @@ public class SlowWidgetPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    // Spunte del diario fatte dal widget, da applicare nell'app.
+    @PluginMethod
+    public void takeDiaryToggles(PluginCall call) {
+        android.content.SharedPreferences p = getContext().getSharedPreferences(SlowWidgets.PREFS, android.content.Context.MODE_PRIVATE);
+        String q = p.getString("diaryQueue", "[]"); p.edit().putString("diaryQueue", "[]").apply();
+        JSObject ret = new JSObject();
+        try { ret.put("items", new JSArray(q)); } catch (Exception e) { ret.put("items", new JSArray()); }
+        call.resolve(ret);
+    }
+
     // Restituisce (una volta sola) la schermata richiesta da un widget all'avvio a freddo.
     @PluginMethod
     public void consumeRoute(PluginCall call) {
