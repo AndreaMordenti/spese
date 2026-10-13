@@ -11,10 +11,10 @@
     <string name="w_desc_upcoming">Le prossime scadenze dei pagamenti pianificati</string>
     <string name="w_desc_portfolio">Valore del portafoglio e variazione</string>
     <string name="w_desc_add">Registra una nuova spesa con un tocco</string>
-    <string name="w_diary">Diario di oggi</string>
+    <string name="w_diary">Segna attività</string>
     <string name="w_inbox">Da confermare</string>
     <string name="w_desc_today">Quanto puoi spendere oggi per restare nel budget</string>
     <string name="w_desc_pace">Spesa del mese rispetto al mese scorso e al budget</string>
-    <string name="w_desc_diary">Le attività del diario fatte oggi e le serie in corso</string>
+    <string name="w_desc_diary">Un tocco per segnare un\'attività del diario (es. Read, Workout)</string>
     <string name="w_desc_inbox">Pagamenti letti da notifiche e SMS da confermare</string>
 </resources>

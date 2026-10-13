@@ -134,22 +134,24 @@ public abstract class SlowWidgets extends AppWidgetProvider {
         }
     }
 
-    // Attività del diario: un tocco su una riga la segna (o la toglie) per oggi, senza aprire l'app.
-    // Il widget aggiorna subito la spunta; l'app applica il cambio (e lo salva su Drive) alla prossima apertura.
-    static final String ACTION_DIARY = "com.andreamordenti.slow.DIARY_TOGGLE";
+    // Segna attività: pulsanti con le attività del diario. Un tocco la registra per oggi, senza aprire l'app.
+    // Il pulsante diventa subito ✓; l'app salva la registrazione (e la manda su Drive) alla prossima apertura.
+    static final String ACTION_DIARY = "com.andreamordenti.slow.DIARY_LOG";
     public static class DiaryWidget extends SlowWidgets {
         RemoteViews build(Context ctx, JSONObject d) {
             RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget_diary);
             JSONArray a = d.optJSONArray("diary");
-            int[] rows = { R.id.w_n1, R.id.w_n2, R.id.w_n3, R.id.w_n4 };
-            for (int i = 0; i < rows.length; i++) {
+            int[] btns = { R.id.w_b1, R.id.w_b2, R.id.w_b3, R.id.w_b4, R.id.w_b5, R.id.w_b6 };
+            for (int i = 0; i < btns.length; i++) {
                 JSONObject r = a != null ? a.optJSONObject(i) : null;
-                v.setTextViewText(rows[i], r != null ? (r.optBoolean("done") ? "✓  " : "○  ") + r.optString("name", "") + r.optString("streak", "") : (i == 0 ? "Nessuna attività" : ""));
-                v.setTextColor(rows[i], r != null && r.optBoolean("done") ? 0xFFD4FF5B : 0xFFF3F4F6);
-                if (r != null) {
-                    Intent t = new Intent(ctx, DiaryWidget.class).setAction(ACTION_DIARY).putExtra("id", r.optString("id"));
-                    v.setOnClickPendingIntent(rows[i], PendingIntent.getBroadcast(ctx, 100 + i, t, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-                }
+                v.setViewVisibility(btns[i], r != null ? android.view.View.VISIBLE : android.view.View.INVISIBLE);
+                if (r == null) continue;
+                boolean done = r.optBoolean("done");
+                v.setTextViewText(btns[i], (done ? "✓ " : "+ ") + r.optString("name", ""));
+                v.setTextColor(btns[i], done ? 0xFF0D0E12 : 0xFFF3F4F6);
+                v.setInt(btns[i], "setBackgroundResource", done ? R.drawable.widget_btn_on : R.drawable.widget_btn);
+                Intent t = new Intent(ctx, DiaryWidget.class).setAction(ACTION_DIARY).putExtra("id", r.optString("id"));
+                v.setOnClickPendingIntent(btns[i], PendingIntent.getBroadcast(ctx, 100 + i, t, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
             }
             v.setOnClickPendingIntent(R.id.w_title, open(ctx, "#diario", 7));
             return v;
@@ -160,13 +162,13 @@ public abstract class SlowWidgets extends AppWidgetProvider {
             if (!ACTION_DIARY.equals(intent.getAction())) { super.onReceive(ctx, intent); return; }
             String id = intent.getStringExtra("id");
             try {
-                JSONObject d = load(ctx); JSONArray a = d.optJSONArray("diary"); boolean done = false;
-                for (int i = 0; a != null && i < a.length(); i++) { JSONObject r = a.getJSONObject(i); if (id.equals(r.optString("id"))) { done = !r.optBoolean("done"); r.put("done", done); } }
+                JSONObject d = load(ctx); JSONArray a = d.optJSONArray("diary");
+                for (int i = 0; a != null && i < a.length(); i++) { JSONObject r = a.getJSONObject(i); if (id.equals(r.optString("id"))) { if (r.optBoolean("done")) return; r.put("done", true); } }
                 save(ctx, d.toString());
                 String day = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ITALY).format(new java.util.Date());
                 SharedPreferences p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
                 JSONArray q = new JSONArray(p.getString("diaryQueue", "[]"));
-                q.put(new JSONObject().put("id", id).put("date", day).put("done", done).put("at", System.currentTimeMillis()));
+                q.put(new JSONObject().put("id", id).put("date", day).put("done", true).put("at", System.currentTimeMillis()));
                 p.edit().putString("diaryQueue", q.toString()).apply();
                 refreshAll(ctx);
             } catch (Exception e) { /* tocco ignorato se i dati non sono leggibili */ }

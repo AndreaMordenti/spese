@@ -19,7 +19,7 @@ function widgetData() {
     portfolio: T.value ? { value: fmtMoney(T.value), gain: `${sgnMoney(T.gain)} (${sgnPct(T.pct)})`, day: T.day ? `Oggi ${sgnMoney(T.day)}` : '', balance: (() => { const B = balanceData(), t = balTarget(); return B.tot ? `Azionario ${(B.eqPct * 100).toFixed(0)}% (fascia ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%)` : ''; })() } : null,
     today: todayWidget(key, spent, budget),
     pace: (() => { try { return paceWidget(key, budget); } catch (e) { return null; } })(),
-    diary: activeHabits().slice(0, 4).map(h => { const st = streaks(habitStats(h).dates); return { id: h.id, name: h.name, done: isDone(h.id, todayISO()), streak: st.cur > 1 ? ` · ${st.cur} giorni di fila` : st.wcur > 1 ? ` · ${st.wcur} settimane` : '' }; }),
+    diary: activeHabits().slice(0, 6).map(h => { const st = streaks(habitStats(h).dates); return { id: h.id, name: h.name, done: isDone(h.id, todayISO()), streak: st.cur > 1 ? ` · ${st.cur} giorni di fila` : st.wcur > 1 ? ` · ${st.wcur} settimane` : '' }; }),
     inbox: (() => { const l = typeof inboxPending === 'function' ? inboxPending() : []; return { count: String(l.length), sub: l.length ? `Ultimo: ${l[0].merchant || 'pagamento'} ${fmtMoney(l[0].amount)}` : 'Niente da confermare' }; })(),
     updated: Date.now(),
   };
@@ -120,7 +120,7 @@ function nativeGoogleLogout() { /* il permesso si revoca da account Google → S
 let nativeTimer = null;
 function onDataSaved() { if (!Native.on) return; clearTimeout(nativeTimer); nativeTimer = setTimeout(() => { pushWidgets(); scheduleNotifications(); }, 800); }
 async function nativeBoot() {
-  if (!Native.on) return;
+  if (!Native.on || DEMO) return; // in demo niente widget, notifiche né lettura di notifiche/SMS
   const N = Native.plugin('LocalNotifications'), W = Native.plugin('SlowWidget');
   if (N) {
     N.createChannel({ id: 'slow', name: 'Slow', description: 'Scadenze, PAC, budget e promemoria', importance: 4 }).catch(() => {});

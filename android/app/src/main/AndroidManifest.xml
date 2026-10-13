@@ -66,7 +66,7 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_pace_info" />
         </receiver>
-        <receiver android:name=".SlowWidgets$DiaryWidget" android:label="Slow · Diario di oggi" android:exported="false">
+        <receiver android:name=".SlowWidgets$DiaryWidget" android:label="Slow · Segna attività" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_diary_info" />
         </receiver>

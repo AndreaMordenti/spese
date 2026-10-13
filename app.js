@@ -72,6 +72,8 @@ const HABIT_ICONS = ['dumbbell', 'book', 'clock', 'run', 'pen', 'heart', 'car', 
 const PALETTE = ['#7AD7F0', '#FFB36B', '#B59CFF', '#F2C94C', '#FF8FAB', '#6EE7B7', '#9AA0AE', '#F97373', '#60A5FA', '#FDBA74'];
 
 // ---------- Stato ----------
+// Modalità demo (Impostazioni): dati di esempio solo in memoria, niente salvataggi né Drive.
+const DEMO = (() => { try { return sessionStorage.getItem('slow.demo') === '1'; } catch (e) { return false; } })();
 const KEY = 'spese.v1';
 const DEFAULT_ACCOUNTS = ['Carta', 'Contanti', 'Bancomat'];
 const defaultCategories = () => [
@@ -110,6 +112,7 @@ function load() {
 }
 let saveTimer = null;
 function save(sync = true) {
+  if (DEMO) return; // in demo le modifiche restano solo in memoria
   // Le impostazioni condivise tra dispositivi hanno una data: vince la modifica più recente.
   const sh = JSON.stringify(pickSettings(S.settings));
   if (sh !== S.meta.settingsHash) { S.meta.settingsHash = sh; S.meta.settingsAt = Date.now(); sync = true; }
@@ -185,7 +188,7 @@ function render(name, args) {
   const views = VIEWS;
   document.body.classList.toggle('modal', name === 'aggiungi');
   const cols = ['home', 'analisi', 'portafoglio', 'diario', 'impostazioni'].includes(name) ? ' desk-cols' : '';
-  app.innerHTML = `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
+  app.innerHTML = (DEMO ? `<button class="demo-bar" onclick="go('#impostazioni')">Modalità demo · dati di esempio, niente viene salvato</button>` : '') + `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
   renderNav(name);
   if (views[name].after) views[name].after(args);
 }
@@ -810,7 +813,7 @@ const pickSettings = st => Object.fromEntries(SYNCED_SETTINGS.filter(k => k in s
 const Drive = {
   state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json', running: null, again: false,
   clientId() { return S.settings.clientId || GOOGLE_CLIENT_ID; },
-  on() { return !!(S.settings.driveOn || (S.meta.lastSync && S.settings.clientId)); },
+  on() { return !DEMO && !!(S.settings.driveOn || (S.meta.lastSync && S.settings.clientId)); },
   ready() { return this.on() && !!this.token && Date.now() < this.exp; },
   setState(s) { this.state = s; const d = $('#sync-dot'); if (d) d.className = 'sync-dot ' + s; },
   setToken(t, secs) { this.token = t; this.exp = Date.now() + ((secs || 3600) - 60) * 1000; localStorage.setItem('spese.tok', JSON.stringify({ t: this.token, e: this.exp })); },
@@ -940,6 +943,7 @@ function viewSettings() {
   return `
     <div class="row between"><span class="title">Impostazioni</span><button class="chip" onclick="history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
     <div class="settings">
+    ${typeof demoSettings === 'function' ? det('demo', DEMO ? 'Modalità demo (attiva)' : 'Modalità demo', demoSettings(), DEMO) : ''}
     ${det('prof', 'Profilo e aspetto', `<div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
 `)}
@@ -1307,6 +1311,7 @@ async function lockDisable() { if (!(await Lock.check($('#l-cur').value))) retur
 // ---------- Avvio ----------
 // Chiamata da boot.js dopo che tutti i moduli sono stati caricati.
 function boot() {
+  if (DEMO && typeof demoData === 'function') Object.assign(S, demoData());
   applyTheme();
   Lock.init();
   normalizeHabits();
@@ -1317,7 +1322,12 @@ function boot() {
   if (typeof nativeBoot === 'function') nativeBoot();
   // Nell'app Android i file sono già nel pacchetto: il service worker serve solo alla versione web.
   const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  if (!isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (!isNative && 'serviceWorker' in navigator) {
+    // Versione nuova pubblicata: si scarica all'apertura e la pagina si ricarica una volta da sola.
+    const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('sw.js').then(r => { r.update(); document.addEventListener('visibilitychange', () => { if (!document.hidden) r.update(); }); }).catch(() => {});
+  }
   // Drive: all'avvio, al ritorno della rete e quando si torna nell'app.
   window.addEventListener('load', () => { setTimeout(() => Drive.sync(), 1200); });
   window.addEventListener('online', () => Drive.sync());
