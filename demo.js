@@ -1,8 +1,39 @@
 /* Modalità demo: dati di esempio generati al momento. Le modifiche restano in memoria e spariscono all'uscita. */
 'use strict';
 
-function demoEnter() { if (!confirm('Entrare in modalità demo? Vedrai dati di esempio; quello che fai non viene salvato. I tuoi dati restano dove sono.')) return; try { sessionStorage.setItem('slow.demo', '1'); } catch (e) { /* senza sessione la demo non parte */ } location.hash = '#home'; location.reload(); }
-function demoExit() { try { sessionStorage.removeItem('slow.demo'); } catch (e) { /* già uscito */ } location.hash = '#home'; location.reload(); }
+// Uscita protetta: si usa il PIN del blocco app; se non c'è, un codice scelto entrando in demo.
+const DEMO_PIN = 'slow.demoPin';
+const demoPinCfg = () => { try { return JSON.parse(localStorage.getItem(DEMO_PIN) || 'null'); } catch (e) { return null; } };
+const pinField = (id, label) => `<div class="field"><label>${label}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
+function demoEnter() {
+  if (!window.crypto || !crypto.subtle) return toast('Serve una connessione sicura (https)');
+  if (Lock.cfg()) return sheet(`<span style="font-weight:800;font-size:18px">Entrare in modalità demo?</span>
+    <span class="hint">Vedrai dati di esempio e niente verrà salvato. Per uscire servirà il PIN del blocco app.</span>
+    <button class="btn primary" onclick="demoGo()">Entra</button>`);
+  sheet(`<span style="font-weight:800;font-size:18px">Codice per uscire dalla demo</span>
+    <span class="hint">Scegli un codice di 4-6 cifre: servirà per tornare ai tuoi dati. Così puoi dare il telefono a qualcuno senza che veda i tuoi dati.</span>
+    ${pinField('d-new', 'Codice')}${pinField('d-new2', 'Ripeti il codice')}
+    <button class="btn primary" onclick="demoSetPin()">Entra in modalità demo</button>`);
+}
+async function demoSetPin() {
+  const a = $('#d-new').value, b = $('#d-new2').value;
+  if (!/^\d{4,6}$/.test(a)) return toast('Il codice deve avere da 4 a 6 cifre');
+  if (a !== b) return toast('I due codici non coincidono');
+  const salt = Lock.b64(Lock.rand(16)); localStorage.setItem(DEMO_PIN, JSON.stringify({ salt, hash: await Lock.hash(a, salt) }));
+  demoGo();
+}
+function demoGo() { try { localStorage.setItem('slow.demo', '1'); } catch (e) { return toast('Impossibile attivare la demo'); } location.hash = '#home'; location.reload(); }
+function demoExit() {
+  sheet(`<span style="font-weight:800;font-size:18px">Uscire dalla demo</span>
+    ${pinField('d-pin', Lock.cfg() ? 'PIN del blocco app' : 'Codice di uscita dalla demo')}
+    <button class="btn primary" onclick="demoExitCheck()">Esci e torna ai dati</button>`);
+}
+async function demoExitCheck() {
+  const v = $('#d-pin').value, d = demoPinCfg();
+  const ok = Lock.cfg() ? await Lock.check(v) : !!d && (await Lock.hash(v, d.salt)) === d.hash;
+  if (!ok) { if (navigator.vibrate) navigator.vibrate([30, 40, 30]); return toast('Codice errato'); }
+  localStorage.removeItem('slow.demo'); localStorage.removeItem(DEMO_PIN); location.hash = '#home'; location.reload();
+}
 
 function demoData() {
   // Generatore pseudo-casuale con seme fisso: la demo è sempre uguale.
@@ -58,6 +89,6 @@ function demoData() {
   };
 }
 function demoSettings() {
-  return DEMO ? `<span class="hint">Stai guardando dati di esempio. Puoi provare tutto: alla chiusura dell'app o all'uscita dalla demo le modifiche spariscono.</span><button class="btn sm primary" onclick="demoExit()">Esci dalla demo e torna ai tuoi dati</button>`
+  return DEMO ? `<span class="hint">Stai guardando dati di esempio. Puoi provare tutto: le modifiche spariscono all'uscita. Per uscire serve il codice.</span><button class="btn sm primary" onclick="demoExit()">Esci dalla demo e torna ai tuoi dati</button>`
     : `<span class="hint">Mostra l'app con dati di esempio: utile per provarla o farla vedere a qualcuno. Niente viene salvato sul dispositivo né su Drive, e i tuoi dati non vengono toccati.</span><button class="btn sm" onclick="demoEnter()">Entra in modalità demo</button>`;
 }

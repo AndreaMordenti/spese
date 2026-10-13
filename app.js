@@ -73,7 +73,8 @@ const PALETTE = ['#7AD7F0', '#FFB36B', '#B59CFF', '#F2C94C', '#FF8FAB', '#6EE7B7
 
 // ---------- Stato ----------
 // Modalità demo (Impostazioni): dati di esempio solo in memoria, niente salvataggi né Drive.
-const DEMO = (() => { try { return sessionStorage.getItem('slow.demo') === '1'; } catch (e) { return false; } })();
+// Resta attiva anche chiudendo l'app: per uscire serve il PIN (o il codice scelto entrando).
+const DEMO = (() => { try { return localStorage.getItem('slow.demo') === '1'; } catch (e) { return false; } })();
 const KEY = 'spese.v1';
 const DEFAULT_ACCOUNTS = ['Carta', 'Contanti', 'Bancomat'];
 const defaultCategories = () => [
@@ -858,6 +859,7 @@ const Drive = {
   },
   // Una sincronizzazione alla volta; se arrivano modifiche durante l'invio, ne parte subito un'altra.
   sync(interactive = false) {
+    if (DEMO) { if (interactive) toast('In modalità demo Drive è spento'); return Promise.resolve(); }
     if (!interactive && !this.on()) return Promise.resolve();
     if (this.running) { this.again = true; return this.running; }
     this.running = this.run(interactive).finally(() => { this.running = null; if (this.again) { this.again = false; this.sync(); } });
@@ -1028,7 +1030,8 @@ function exportCSV() {
   const rows = [['data', 'ora', 'tipo', 'importo', 'categoria', 'nota', 'conto'], ...live(S.expenses).sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '')).map(e => [e.date, e.time || '', typeOf(e) === 'income' ? 'entrata' : 'spesa', String(e.amount).replace('.', ','), catById(e.cat).name, e.note || '', e.account || ''])];
   download(`movimenti-${todayISO()}.csv`, '\ufeff' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n'), 'text/csv');
 }
-function wipe() { if (confirm('Cancellare tutti i dati salvati su questo telefono? La copia su Drive resta.')) { localStorage.removeItem(KEY); location.reload(); } }
+function wipe() {
+  if (DEMO) return toast('Non disponibile in modalità demo'); if (confirm('Cancellare tutti i dati salvati su questo telefono? La copia su Drive resta.')) { localStorage.removeItem(KEY); location.reload(); } }
 
 // ---------- Importazione ----------
 // Riconosce da sola tre tipi di file: export Wallet (CSV), log attività (CSV, un file per attività) e backup dell'app (JSON).
@@ -1259,10 +1262,12 @@ const Lock = {
     this.draw(); const d = $('#lock-dots'); if (d) { d.classList.add('shake'); if (navigator.vibrate) navigator.vibrate([30, 40, 30]); }
   },
   forgot() {
+    if (DEMO) return toast('Non disponibile in modalità demo');
     if (!confirm('Il PIN non si può recuperare. Posso cancellare i dati locali di questo telefono e togliere il blocco: la copia su Google Drive resta e puoi risincronizzarla. Procedere?')) return;
     localStorage.removeItem(KEY); this.put(null); location.reload();
   },
   init() {
+    if (DEMO) { document.documentElement.classList.remove('locked'); return; } // in demo i dati veri non sono raggiungibili
     if (this.cfg()) this.show(); else document.documentElement.classList.remove('locked');
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.hiddenAt = Date.now(); return; }
@@ -1281,6 +1286,7 @@ function lockSection() {
       <button class="btn sm" onclick="Lock.show()">Blocca adesso</button>`;
 }
 function lockSetupSheet(change) {
+  if (DEMO) return toast('Non disponibile in modalità demo');
   const f = (id, label) => `<div class="field"><label>${label}</label><input id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>`;
   sheet(`<span style="font-weight:800;font-size:18px">${change ? 'Cambia PIN' : 'Imposta un PIN'}</span>
     ${change ? f('l-cur', 'PIN attuale') : ''}${f('l-new', 'Nuovo PIN (4-6 cifre)')}${f('l-new2', 'Ripeti il PIN')}
@@ -1296,17 +1302,20 @@ async function lockSave(change) {
   if (!change && window.PublicKeyCredential && confirm('Vuoi sbloccare l\'app anche con l\'impronta o il volto?')) lockToggleBio();
 }
 async function lockToggleBio() {
+  if (DEMO) return toast('Non disponibile in modalità demo');
   const c = Lock.cfg();
   try { if (c.cred) { c.cred = null; Lock.put(c); toast('Biometria disattivata'); } else { await Lock.enrollBio(); toast('Biometria attivata'); } }
   catch (e) { toast('Biometria non attivata: ' + (e.name === 'NotAllowedError' ? 'operazione annullata' : e.message), 3500); }
   route();
 }
 function lockDisableSheet() {
+  if (DEMO) return toast('Non disponibile in modalità demo');
   sheet(`<span style="font-weight:800;font-size:18px">Disattiva il blocco</span>
     <div class="field"><label>PIN attuale</label><input id="l-cur" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></div>
     <button class="btn danger" onclick="lockDisable()">Disattiva</button>`);
 }
-async function lockDisable() { if (!(await Lock.check($('#l-cur').value))) return toast('PIN errato'); Lock.put(null); closeSheet(); toast('Blocco disattivato'); route(); }
+async function lockDisable() {
+  if (DEMO) return toast('Non disponibile in modalità demo'); if (!(await Lock.check($('#l-cur').value))) return toast('PIN errato'); Lock.put(null); closeSheet(); toast('Blocco disattivato'); route(); }
 
 // ---------- Avvio ----------
 // Chiamata da boot.js dopo che tutti i moduli sono stati caricati.
