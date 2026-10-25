@@ -323,17 +323,23 @@ function setDraftType(t) {
   const keep = { amountStr: draft.amountStr, note: draft.note, date: draft.date, time: draft.time, account: draft.account, id: draft.id, source: draft.source };
   draft = { ...newDraft(t), ...keep }; route();
 }
-function pickCat(id) { draft.cat = id; closeSheet(); route(); }
+// Selettore di categoria riusabile: di default compila la spesa in inserimento, oppure un altro bersaglio
+// (es. un pagamento letto dalle notifiche) passato a openCatPicker({ type, cat, apply }).
+let picker = null;
+const pk = () => picker || { type: draft.type, cat: draft.cat, apply: id => { draft.cat = id; } };
+function pickCat(id) { pk().apply(id); picker = null; closeSheet(); route(); }
 let pickerGroup = null, pickerQ = '';
-function openCatPicker() {
-  pickerQ = ''; pickerGroup = draft.type === 'expense' && draft.cat ? groupOf(catById(draft.cat)) : null;
+function openCatPicker(target) {
+  picker = target || null;
+  pickerQ = ''; pickerGroup = pk().type === 'expense' && pk().cat ? groupOf(catById(pk().cat)) : null;
   sheet(`<div class="row between"><span style="font-weight:800;font-size:18px">Categoria</span><button class="chip" onclick="closeSheet()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
     <div class="search-box">${svg('search', 18)}<input id="cat-q" type="search" placeholder="Cerca una categoria" autocomplete="off" oninput="pickerQ=this.value;$('#cat-body').innerHTML=catPickerBody()"></div>
     <div id="cat-body" class="col" style="gap:16px">${catPickerBody()}</div>`);
+  if (window.innerWidth >= 1024) setTimeout(() => $('#cat-q') && $('#cat-q').focus(), 50); // sul telefono niente tastiera aperta da sola
 }
 function catPickerBody() {
-  const type = draft.type, list = topCats(type), q = pickerQ.trim().toLowerCase();
-  const chip = c => `<button class="chip ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`;
+  const type = pk().type, cur = pk().cat, list = topCats(type), q = pickerQ.trim().toLowerCase();
+  const chip = c => `<button class="chip ${c.id === cur ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span>${esc(c.name)}</button>`;
   const wrap = cs => `<div class="row" style="flex-wrap:wrap;gap:8px">${cs.map(chip).join('')}</div>`;
   const add = (label, g) => `<button class="chip" style="color:var(--accent);border-style:dashed" onclick="addCategory('${g || ''}', true, '${esc(pickerQ.trim()).replace(/'/g, '&#39;')}')">${svg('plus', 16, 2.5)} ${esc(label)}</button>`;
   if (q) {
@@ -614,21 +620,7 @@ function viewDiario() {
           <button class="check ${done ? 'on' : ''}" onclick="toggleLog('${h.id}','${diaryDate}')" aria-label="${done ? 'Annulla' : 'Segna fatto'}">${svg('check', 20, 3)}</button>
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
-    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryOverview(habits)}${habits.map(h => { const st = habitStats(h); const start = addDays(weekStart(todayISO()), -28); const cells = Array.from({ length: 35 }, (_, i) => addDays(start, i)); return `
-      <details style="--c:${h.color}">
-        <summary><span class="row" style="gap:10px"><span style="color:${h.color}">${svg(h.icon, 18)}</span>${esc(h.name)}</span><span class="small muted" style="margin-left:auto;margin-right:12px">${st.total} giorni</span></summary>
-        <div>
-          <div class="heat">${cells.map(d => `<div class="${st.dates.has(d) ? 'on' : d > todayISO() ? 'future' : ''}" title="${d}"></div>`).join('')}</div>
-          <div class="row" style="justify-content:space-between">
-            <div class="stat"><span class="v num">${st.month}</span><span class="small muted">questo mese</span></div>
-            <div class="stat"><span class="v num">${st.year}</span><span class="small muted">quest'anno</span></div>
-            <div class="stat"><span class="v num">${st.total}</span><span class="small muted">in totale</span></div>
-          </div>
-          ${habitInsights(h, st)}
-          ${yearBars(st, h.color)}
-          <span class="small muted">Ultima volta: ${longDate(st.last)}${st.first ? ' · primo giorno: ' + longDate(st.first) : ''}</span>
-        </div>
-      </details>`; }).join('')}</div>` : ''}
+    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryOverview(habits)}${diaryHistory(habits)}</div>` : ''}
     ${arch.length ? `<details><summary>Archiviate (${arch.length})</summary><div>${arch.map(h => { const st = habitStats(h); return `
       <button class="item" style="padding:8px 0;background:transparent;border:none" onclick="editHabit('${h.id}')">
         <div class="tile" style="background:${hexA(h.color, .16)};color:${h.color}">${svg(h.icon, 20)}</div>
@@ -695,7 +687,7 @@ function deleteHabit(id) {
 
 // ---------- Sheet ----------
 function sheet(html) { $('#sheet').innerHTML = `<div class="handle"></div>${html}`; $('#sheet-bg').classList.add('open'); }
-function closeSheet() { $('#sheet-bg').classList.remove('open'); }
+function closeSheet() { $('#sheet-bg').classList.remove('open'); if (typeof picker !== 'undefined') picker = null; }
 document.addEventListener('click', e => { if (e.target.id === 'sheet-bg') closeSheet(); });
 
 // ---------- Scansione scontrino ----------
@@ -905,13 +897,17 @@ const Drive = {
 
 // ---------- Impostazioni ----------
 const openSecs = {};
+// Sezione apribile delle Impostazioni: icona e riga di stato (da detMeta) per capire cosa c'è dentro senza aprirla.
+let detMeta = {};
 function det(id, title, body, dflt = false) {
-  const open = openSecs[id] === undefined ? dflt : openSecs[id];
-  return `<details ${open ? 'open' : ''} ontoggle="openSecs['${id}']=this.open"><summary>${title}</summary><div>${body}</div></details>`;
+  const open = openSecs[id] === undefined ? dflt : openSecs[id], m = detMeta[id] || {};
+  const head = m.icon ? `<span class="row" style="gap:12px;min-width:0"><span class="set-ic">${svg(m.icon, 18)}</span><span class="col" style="gap:1px;min-width:0"><span>${title}</span>${m.sub ? `<span class="small muted truncate" style="font-weight:500">${m.sub}</span>` : ''}</span></span>` : title;
+  return `<details ${open ? 'open' : ''} ontoggle="openSecs['${id}']=this.open"><summary>${head}</summary><div>${body}</div></details>`;
 }
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
+  ['2026-10-25', ['Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
   ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
   ['2026-10-11', ['Lettura degli SMS delle banche, con importazione dello storico', 'Nuovi widget: oggi puoi spendere, ritmo del mese, da confermare']],
@@ -959,21 +955,42 @@ function viewSettings() {
   return `
     <div class="row between"><span class="title">Impostazioni</span><button class="chip" onclick="history.back()" aria-label="Chiudi">${svg('x', 16, 2.5)}</button></div>
     <div class="settings">
-    ${det('news', 'Novità · ' + fmtLong(RELEASES[0][0], { day: 'numeric', month: 'short' }), releasesSection())}
-    ${typeof demoSettings === 'function' ? det('demo', DEMO ? 'Modalità demo (attiva)' : 'Modalità demo', demoSettings(), DEMO) : ''}
+    ${(() => { const cs = cats('expense'), pl = live(S.planned).filter(p => p.active !== false), pend = typeof inboxPending === 'function' ? inboxPending().length : 0, lk = Lock.cfg(), t = S.settings.target || {};
+      detMeta = {
+        prof: { icon: 'pen', sub: `${s.name || 'Nessun nome'} · tema ${{ system: 'di sistema', dark: 'scuro', minimal: 'chiaro' }[s.theme] || s.theme}` },
+        gdrive: { icon: 'cloud', sub: DEMO ? 'Spento in modalità demo' : Drive.on() ? `Collegato${S.meta.lastSync ? ' · ultimo salvataggio ' + new Date(S.meta.lastSync).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}` : 'Non collegato: i dati sono solo su questo dispositivo' },
+        data: { icon: 'diary', sub: `${live(S.expenses).length} movimenti · esporta o importa backup, Wallet, log` },
+        acc: { icon: 'bank', sub: S.accounts.join(', ') || 'Nessun conto' },
+        cats: { icon: 'tag', sub: `${cs.length} categorie · budget ${fmtMoney(totalBudget())}/mese` },
+        plan: { icon: 'repeat', sub: `${pl.length} attivi · ${fmtMoney(pl.filter(p => (p.type || 'expense') === 'expense').reduce((a, p) => a + plannedMonthly(p), 0))}/mese` },
+        nread: { icon: 'scan', sub: Native.on ? (pend ? `${pend} da confermare` : 'Notifiche e SMS delle banche') : "Solo nell'app Android" },
+        pf: { icon: 'trend', sub: `Fascia azionario ${t.lo || 75}–${t.hi || 80}% · prezzi e proxy` },
+        notif: { icon: 'clock', sub: Native.on ? 'Promemoria, PAC, budget, widget' : "Solo nell'app Android" },
+        lock: { icon: 'lock', sub: lk ? `Attivo · ${lk.cred ? 'PIN e impronta' : 'PIN'}` : 'Non attivo' },
+        ai: { icon: 'camera', sub: AI.configured() ? 'Configurata' : 'Da configurare per leggere gli scontrini' },
+        demo: { icon: 'play', sub: DEMO ? 'Attiva · dati di esempio' : 'Prova l\'app con dati di esempio' },
+        news: { icon: 'gift', sub: 'Ultimo aggiornamento ' + fmtLong(RELEASES[0][0], { day: 'numeric', month: 'long' }) },
+      }; return ''; })()}
+    <span class="set-group">Profilo e dati</span>
     ${det('prof', 'Profilo e aspetto', `<div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
     <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
 `)}
-    ${det('data', 'Dati e importazione', data)}
+    ${det('gdrive', 'Google Drive', gdrive)}
+    ${det('data', 'Backup e importazione', data)}
+    ${det('acc', 'Conti', `<input value="${esc(S.accounts.join(', '))}" onchange="S.accounts=this.value.split(',').map(x=>x.trim()).filter(Boolean);save()"><span class="hint">Separati da virgola.</span>`)}
+
+    <span class="set-group">Spese</span>
     ${det('cats', 'Categorie e budget', categories)}
     ${det('plan', 'Pagamenti pianificati', `<button class="btn sm" onclick="go('#pianificati')">${svg('repeat', 18)} Gestisci i pagamenti pianificati</button><span class="hint">${live(S.planned).filter(p => p.active !== false).length} attivi. Si registrano da soli alla data di scadenza.</span>`)}
-    ${det('notif', 'Notifiche e widget', notifSettings())}
-    ${det('nread', 'Pagamenti letti dalle notifiche', notifReadSettings())}
+    ${det('nread', 'Pagamenti da notifiche e SMS', notifReadSettings())}
+    <span class="set-group">Investimenti</span>
     ${det('pf', 'Portafoglio e prezzi', portfolioSettings())}
+    <span class="set-group">App</span>
+    ${det('notif', 'Notifiche e widget', notifSettings())}
     ${det('lock', 'Blocco app', lockSection())}
-    ${det('gdrive', 'Google Drive', gdrive)}
-    ${det('ai', 'Lettura scontrini con AI', ai)}
-    ${det('acc', 'Conti', `<input value="${esc(S.accounts.join(', '))}" onchange="S.accounts=this.value.split(',').map(x=>x.trim()).filter(Boolean);save()"><span class="hint">Separati da virgola.</span>`)}
+    ${det('ai', 'Scontrini con AI', ai)}
+    ${typeof demoSettings === 'function' ? det('demo', DEMO ? 'Modalità demo (attiva)' : 'Modalità demo', demoSettings(), DEMO) : ''}
+    ${det('news', 'Novità', releasesSection())}
     </div>`;
 }
 function editCategory(id) {
@@ -1017,7 +1034,7 @@ function mergeCategory(id) {
 function removeCategory(id) { const c = catById(id); c.deleted = true; c.updatedAt = Date.now(); save(); closeSheet(); route(); }
 // forDraft: creata dal selettore durante l'inserimento di una spesa, che la usa subito.
 function addCategory(group, forDraft, name = '') {
-  const kind = forDraft ? draft.type : catKindView, g = group ? groupById(group) : null;
+  const kind = forDraft ? pk().type : catKindView, g = group ? groupById(group) : null;
   const c = { color: g ? g.color : PALETTE[S.categories.length % PALETTE.length], icon: g ? g.icon : 'tag' };
   sheet(`<span style="font-weight:800;font-size:18px">Nuova categoria ${kind === 'income' ? 'di entrata' : 'di spesa'}</span>
     <div class="field"><label>Nome</label><input id="c-name" value="${esc(name)}" placeholder="Es. Animali"></div>
@@ -1027,14 +1044,14 @@ function addCategory(group, forDraft, name = '') {
     <button class="btn primary" onclick="createCategory(${forDraft ? 'true' : 'false'})">Aggiungi</button>`);
 }
 function createCategory(forDraft) {
-  const kind = forDraft ? draft.type : catKindView, name = $('#c-name').value.trim(); if (!name) return toast('Dai un nome alla categoria');
+  const kind = forDraft ? pk().type : catKindView, name = $('#c-name').value.trim(); if (!name) return toast('Dai un nome alla categoria');
   if (findCategory(name, kind)) return toast('Esiste già una categoria con questo nome');
   const c = ensureCategory(name, kind);
   c.icon = $('#sheet .chip.on[data-icon]')?.dataset.icon || c.icon; c.color = $('#sheet .chip.on[data-color]')?.dataset.color || c.color;
   if ($('#c-group')) c.group = $('#c-group').value;
   if ($('#c-budget')) c.budget = Math.max(0, Number($('#c-budget').value) || 0);
   c.updatedAt = Date.now(); save(); closeSheet();
-  if (forDraft) draft.cat = c.id;
+  if (forDraft) { pk().apply(c.id); picker = null; }
   route();
 }
 // Nell'app Android il download del browser non funziona: si usa il menu Condividi (nativeSave).

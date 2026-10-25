@@ -68,6 +68,7 @@ function addInbox(p, at, app) {
   S.inbox = S.inbox || [];
   const d = new Date(at), date = p.date || localISO(d), time = p.time || d.toTimeString().slice(0, 5), id = 'n-' + at + '-' + Math.round(p.amount * 100);
   if (S.inbox.some(x => x.id === id)) return false;
+  if (p.type === 'expense' && matchesPlanned(p.amount, date)) return false; // già coperto da un pagamento pianificato
   // Stesso pagamento da due fonti (es. app e SMS della banca) a pochi minuti: uno solo.
   const twin = S.inbox.find(x => !x.deleted && Math.abs(x.amount - p.amount) < 0.01 && Math.abs(x.at - at) < 15 * 60000);
   if (twin) { if (!twin.apps.includes(app)) { twin.apps.push(app); twin.updatedAt = Date.now(); if (!twin.merchant && p.merchant) twin.merchant = p.merchant; } return false; }
@@ -75,6 +76,18 @@ function addInbox(p, at, app) {
   const dup = live(S.expenses).find(e => Math.abs(Number(e.amount) - p.amount) < 0.01 && typeOf(e) === p.type && Math.abs(isoDay(e.date) - isoDay(date)) <= 1);
   S.inbox.push({ id, at, date, time, amount: p.amount, merchant: p.merchant, type: p.type, apps: [app], cat: guessCat(p.merchant, p.type), dup: dup ? dup.id : null, status: 'pending', updatedAt: Date.now() });
   return true;
+}
+
+// Un pagamento pianificato (Netflix, palestra, PAC…) registrato in automatico non va riproposto dalle notifiche:
+// stesso importo (±2%) e scadenza a 3 giorni o meno.
+function matchesPlanned(amount, date) {
+  return plannedAll().some(p => p.active !== false && Number(p.amount) > 0 && Math.abs(Number(p.amount) - amount) <= Math.max(0.05, Number(p.amount) * 0.02)
+    && occurrences(p, addDays(date, -3), addDays(date, 3)).length > 0);
+}
+// Ripulisce la lista dai pagamenti già in attesa che coincidono con un pianificato (es. letti prima di questa regola).
+function inboxDropPlanned() {
+  let n = 0; inboxPending().forEach(x => { if (x.type === 'expense' && matchesPlanned(x.amount, x.date)) { Object.assign(x, { status: 'skip', reason: 'planned', updatedAt: Date.now() }); n++; } });
+  if (n) save(); return n;
 }
 
 // ---------- SMS delle banche ----------
@@ -150,16 +163,22 @@ async function ingestNotifications() {
 
 // ---------- Schermata "Da confermare" ----------
 function inboxRow(x) {
-  const c = x.cat ? catById(x.cat) : null, opts = topCats(x.type).map(k => `<option value="${k.id}" ${k.id === x.cat ? 'selected' : ''}>${esc(k.name)}</option>`).join('');
+  const c = x.cat ? catById(x.cat) : null;
   return `<div class="card col" style="gap:10px">
     <div class="row between" style="align-items:flex-start"><div class="col" style="gap:2px;min-width:0"><span class="truncate" style="font-weight:800">${esc(x.merchant || 'Esercente non riconosciuto')}</span><span class="small muted">${dayFmt(x.date)} ${x.time} · ${esc(x.apps.join(' + '))}</span></div>
       <span class="num" style="font-size:18px;font-weight:700;color:${x.type === 'income' ? 'var(--accent)' : 'inherit'}">${x.type === 'income' ? '+' : '-'}${fmtMoney(x.amount, false)}</span></div>
     ${x.dup ? `<span class="small" style="color:var(--warn)">Forse già registrato: c'è un movimento uguale in quei giorni.</span>` : ''}
-    <select onchange="inboxSet('${x.id}','cat',this.value)" aria-label="Categoria">${c ? '' : '<option value="">Scegli la categoria</option>'}${opts}</select>
+    <button class="cat-current" onclick="inboxPickCat('${x.id}')" aria-label="Scegli la categoria">
+      ${c ? `<span class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:36px;height:36px">${svg(c.icon, 18)}</span><span class="col grow" style="gap:0;text-align:left;min-width:0"><span class="truncate" style="font-weight:700">${esc(c.name)}</span>${x.type === 'expense' ? `<span class="small muted truncate">${groupById(groupOf(c)).name}</span>` : ''}</span>`
+        : `<span class="grow" style="text-align:left;color:var(--warn);font-weight:700">Scegli la categoria</span>`}
+      <span class="small" style="color:var(--accent);flex-shrink:0">${svg('search', 16)} ${c ? 'Cambia' : 'Cerca'}</span>
+    </button>
     <div class="row" style="gap:8px"><button class="btn sm primary grow" onclick="inboxConfirm('${x.id}')">${svg('check', 18, 3)} Conferma</button><button class="chip" onclick="inboxEdit('${x.id}')" aria-label="Modifica">${svg('pen', 18)}</button><button class="chip" onclick="inboxSkip('${x.id}')" aria-label="Scarta">${svg('x', 18, 2.5)}</button></div>
   </div>`;
 }
+function inboxPickCat(id) { const x = inboxById(id); openCatPicker({ type: x.type, cat: x.cat, apply: c => inboxSet(id, 'cat', c) }); }
 function viewInbox() {
+  inboxDropPlanned();
   const list = inboxPending(), ready = list.filter(x => x.cat && !x.dup);
   return `
     <div class="row between">
@@ -170,7 +189,7 @@ function viewInbox() {
     ${list.filter(x => x.dup).length > 1 ? `<button class="btn sm" onclick="inboxSkipDups()">${svg('x', 18, 2.5)} Scarta quelli già registrati (${list.filter(x => x.dup).length})</button>` : ''}
     ${ready.length > 1 ? `<button class="btn sm" onclick="inboxConfirmAll()">${svg('check', 18, 3)} Conferma tutti quelli con categoria (${ready.length})</button>` : ''}
     ${list.map(inboxRow).join('') || '<div class="empty">Niente da confermare.<br>I pagamenti letti dalle notifiche compaiono qui.</div>'}
-    <span class="hint">La categoria scelta per un esercente viene ricordata: la prossima volta la propone da sola.</span>`;
+    <span class="hint">La categoria scelta per un esercente viene ricordata: la prossima volta la propone da sola. I pagamenti che coincidono con un pagamento pianificato non vengono proposti, perché sono già registrati.</span>`;
 }
 VIEWS.inbox = viewInbox;
 const inboxById = id => (S.inbox || []).find(x => x.id === id);
@@ -192,6 +211,7 @@ function inboxEdit(id) {
   go('#aggiungi/edit');
 }
 function inboxHomeBlock() {
+  inboxDropPlanned();
   const n = inboxPending().length; if (!n) return '';
   return `<a href="#inbox" class="empty" style="color:var(--accent);border-color:var(--accent);padding:12px">${n === 1 ? '1 pagamento letto dalle notifiche' : n + ' pagamenti letti dalle notifiche'}: tocca per confermare</a>`;
 }

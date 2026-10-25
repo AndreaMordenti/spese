@@ -140,3 +140,45 @@ function diaryOverview(habits) {
     <div class="col" style="gap:6px"><div class="row between small"><span class="muted">Attività per settimana, ultime 11 complete</span>${lr ? `<span style="font-weight:700;color:${Math.abs(lr.b) < 0.1 ? 'var(--muted)' : lr.b > 0 ? 'var(--accent)' : 'var(--warn)'}">${Math.abs(lr.b) < 0.1 ? '≈ stabile' : (lr.b > 0 ? '+' : '-') + Math.abs(lr.b).toFixed(1).replace('.', ',') + '/sett.'}</span>` : ''}</div>${chart}</div>
   </div>`;
 }
+
+// ---------- Diario: storico di una sola attività ----------
+let diaryPick = null;
+function diaryHistory(habits) {
+  const h = habits.find(x => x.id === diaryPick) || habits[0], st = habitStats(h), ds = [...st.dates].sort(), today = todayISO();
+  const chips = `<div class="hscroll cat-strip">${habits.map(x => `<button class="chip ${x.id === h.id ? 'on' : ''}" onclick="diaryPick='${x.id}';route()"><span style="color:${x.id === h.id ? 'inherit' : x.color}">${svg(x.icon, 16)}</span>${esc(x.name)}</button>`).join('')}</div>`;
+  if (!ds.length) return chips + `<div class="empty">${esc(h.name)}: nessuna registrazione ancora.</div>`;
+  const s = streaks(st.dates), span = daysBetween(ds[0], today) + 1;
+  // Ultime 12 settimane: media a settimana e quante settimane con almeno una volta.
+  const tw = weekStart(today), weeks = Array.from({ length: 12 }, (_, i) => addDays(tw, -7 * (i + 1))), perWeek = weeks.map(w => ds.filter(d => d >= w && d < addDays(w, 7)).length);
+  const avgW = perWeek.reduce((a, b) => a + b, 0) / 12, activeW = perWeek.filter(Boolean).length;
+  // Curiosità
+  const byMonth = {}; ds.forEach(d => { byMonth[monthKey(d)] = (byMonth[monthKey(d)] || 0) + 1; });
+  const [bestM, bestN] = Object.entries(byMonth).sort((a, b) => b[1] - a[1])[0];
+  let gap = 0, gapFrom = ds[0]; for (let i = 1; i < ds.length; i++) { const g = daysBetween(ds[i - 1], ds[i]) - 1; if (g > gap) { gap = g; gapFrom = ds[i - 1]; } }
+  const byWeek = {}; ds.forEach(d => { const w = weekStart(d); byWeek[w] = (byWeek[w] || 0) + 1; }); const bestWeek = Math.max(...Object.values(byWeek));
+  const wd = [0, 0, 0, 0, 0, 0, 0]; ds.forEach(d => { wd[(new Date(d + 'T12:00:00').getDay() + 6) % 7]++; }); const favDay = WEEKDAYS[wd.indexOf(Math.max(...wd))];
+  const since = daysBetween(ds[ds.length - 1], today), every = span / ds.length;
+  const facts = [
+    `In media una volta ogni <b>${every < 1.05 ? 'giorno' : every.toFixed(1).replace('.', ',') + ' giorni'}</b> da quando hai iniziato, il ${longDate(ds[0])}.`,
+    `Il mese migliore è stato <b>${monthLabel(bestM)}</b>, con ${bestN} ${bestN === 1 ? 'giorno' : 'giorni'}.`,
+    `La settimana record conta <b>${bestWeek}</b> ${bestWeek === 1 ? 'giorno' : 'giorni'}; il giorno che preferisci è il <b>${favDay}</b>.`,
+    gap > 0 ? `La pausa più lunga è stata di <b>${gap} giorni</b>, dopo il ${longDate(gapFrom)}.` : null,
+    since === 0 ? 'Fatto anche oggi.' : since === 1 ? "L'ultima volta è stata ieri." : `L'ultima volta è stata <b>${since} giorni fa</b>, il ${longDate(ds[ds.length - 1])}.`,
+    `Nelle ultime 12 settimane l'hai fatto in ${activeW} settimane su 12.`,
+  ].filter(Boolean);
+  const start = addDays(weekStart(today), -52 * 7), cells = Array.from({ length: 53 * 7 }, (_, i) => addDays(start, i));
+  const cal = `<div class="ex-cal">${Array.from({ length: 53 }, (_, w) => `<div>${cells.slice(w * 7, w * 7 + 7).map(d => `<span title="${d}" style="background:${st.dates.has(d) ? h.color : d > today ? 'transparent' : 'var(--surface-2)'}"></span>`).join('')}</div>`).join('')}</div>`;
+  return `${chips}
+    <div class="card col" style="gap:14px">
+      <div class="row between"><span class="row" style="gap:10px;font-weight:800"><span style="color:${h.color}">${svg(h.icon, 20)}</span>${esc(h.name)}</span><button class="chip" style="height:32px" onclick="editHabit('${h.id}')" aria-label="Modifica attività">${svg('pen', 16)}</button></div>
+      <div class="ex-kpis">
+        <div class="stat"><span class="v num">${st.total}</span><span class="small muted">giorni in totale</span></div>
+        <div class="stat"><span class="v num">${st.month}</span><span class="small muted">questo mese</span></div>
+        <div class="stat"><span class="v num">${avgW.toFixed(1).replace('.', ',')}</span><span class="small muted">a settimana (12 sett.)</span></div>
+        <div class="stat"><span class="v num">${s.cur}<span class="small muted"> / ${s.best}</span></span><span class="small muted">serie attuale / record</span></div>
+      </div>
+      <div class="col" style="gap:6px"><span class="small muted">Ultimo anno</span>${cal}</div>
+      <div class="col" style="gap:8px"><span style="font-weight:800">Curiosità</span>${facts.map(f => `<span class="small" style="line-height:1.5">• ${f}</span>`).join('')}</div>
+      ${habitInsights(h, st)}
+    </div>`;
+}
