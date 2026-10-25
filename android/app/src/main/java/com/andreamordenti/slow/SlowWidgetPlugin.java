@@ -106,6 +106,79 @@ public class SlowWidgetPlugin extends Plugin {
         JSObject ret = new JSObject(); ret.put("items", out); call.resolve(ret);
     }
 
+    // ---------- Uso del telefono (Diario) ----------
+    private boolean usageGranted() {
+        android.app.AppOpsManager ops = (android.app.AppOpsManager) getContext().getSystemService(android.content.Context.APP_OPS_SERVICE);
+        int mode = ops.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), getContext().getPackageName());
+        return mode == android.app.AppOpsManager.MODE_ALLOWED;
+    }
+
+    @PluginMethod
+    public void usageAccess(PluginCall call) {
+        JSObject ret = new JSObject(); ret.put("granted", usageGranted()); call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openUsageAccess(PluginCall call) {
+        getContext().startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        call.resolve();
+    }
+
+    // Per ogni giorno: minuti di schermo, sblocchi, primo sblocco, ultimo uso, minuti tra mezzanotte e le 5, app più usate.
+    // Solo numeri e nomi delle app: nessun contenuto.
+    @PluginMethod
+    public void usageDays(PluginCall call) {
+        if (!usageGranted()) { call.reject("accesso ai dati di utilizzo non concesso"); return; }
+        int days = Math.max(1, Math.min(60, call.getInt("days", 14)));
+        android.app.usage.UsageStatsManager um = (android.app.usage.UsageStatsManager) getContext().getSystemService(android.content.Context.USAGE_STATS_SERVICE);
+        android.content.pm.PackageManager pm = getContext().getPackageManager();
+        java.util.Set<String> skip = new java.util.HashSet<>();
+        skip.add("com.android.systemui");
+        for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)) skip.add(r.activityInfo.packageName);
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0); cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0);
+        cal.add(java.util.Calendar.DAY_OF_MONTH, -(days - 1));
+        JSArray out = new JSArray();
+        java.text.SimpleDateFormat iso = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT), hm = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT);
+        long now = System.currentTimeMillis();
+        for (int d = 0; d < days; d++) {
+            long start = cal.getTimeInMillis(); cal.add(java.util.Calendar.DAY_OF_MONTH, 1); long end = Math.min(cal.getTimeInMillis(), now), late = start + 5 * 3600_000L;
+            if (start >= now) break;
+            android.app.usage.UsageEvents ev = um.queryEvents(start, end);
+            android.app.usage.UsageEvents.Event e = new android.app.usage.UsageEvents.Event();
+            java.util.Map<String, long[]> apps = new java.util.HashMap<>(); // [ms, aperture]
+            String fg = null; long fgAt = 0, first = 0, last = 0, lateMs = 0; int unlocks = 0;
+            while (ev.hasNextEvent()) {
+                ev.getNextEvent(e);
+                int t = e.getEventType(); long ts = e.getTimeStamp(); String pk = e.getPackageName();
+                if (t == 18 /* KEYGUARD_HIDDEN */) { unlocks++; if (first == 0 && ts >= late) first = ts; }
+                else if (t == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
+                    if (skip.contains(pk)) continue;
+                    if (fg != null && !fg.equals(pk)) { long dur = ts - fgAt; apps.computeIfAbsent(fg, k -> new long[2])[0] += dur; if (fgAt < late) lateMs += Math.min(ts, late) - fgAt; }
+                    if (fg == null || !fg.equals(pk)) { apps.computeIfAbsent(pk, k -> new long[2])[1]++; fgAt = ts; fg = pk; }
+                } else if ((t == android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED && pk.equals(fg)) || t == 16 /* SCREEN_NON_INTERACTIVE */) {
+                    if (fg != null) { apps.computeIfAbsent(fg, k -> new long[2])[0] += ts - fgAt; if (fgAt < late) lateMs += Math.min(ts, late) - fgAt; last = ts; fg = null; }
+                }
+            }
+            if (fg != null) { apps.computeIfAbsent(fg, k -> new long[2])[0] += end - fgAt; last = end; }
+            long total = 0; for (long[] v : apps.values()) total += v[0];
+            java.util.List<java.util.Map.Entry<String, long[]>> list = new java.util.ArrayList<>(apps.entrySet());
+            list.sort((a, b) -> Long.compare(b.getValue()[0], a.getValue()[0]));
+            JSArray top = new JSArray();
+            for (int i = 0; i < Math.min(5, list.size()); i++) {
+                java.util.Map.Entry<String, long[]> it = list.get(i); if (it.getValue()[0] < 60_000) break;
+                String label = it.getKey(); try { label = pm.getApplicationLabel(pm.getApplicationInfo(it.getKey(), 0)).toString(); } catch (Exception ignored) {}
+                JSObject a = new JSObject(); a.put("n", label); a.put("min", Math.round(it.getValue()[0] / 60000.0)); a.put("opens", it.getValue()[1]); top.put(a);
+            }
+            JSObject o = new JSObject();
+            o.put("date", iso.format(new java.util.Date(start))); o.put("screenMin", Math.round(total / 60000.0)); o.put("unlocks", unlocks);
+            o.put("first", first > 0 ? hm.format(new java.util.Date(first)) : ""); o.put("last", last > 0 ? hm.format(new java.util.Date(last)) : "");
+            o.put("lateMin", Math.round(Math.max(0, lateMs) / 60000.0)); o.put("apps", top);
+            out.put(o);
+        }
+        JSObject ret = new JSObject(); ret.put("items", out); call.resolve(ret);
+    }
+
     // ---------- Lettura notifiche di pagamento ----------
     @PluginMethod
     public void notifAccess(PluginCall call) {

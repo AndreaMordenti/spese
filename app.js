@@ -106,6 +106,8 @@ function load() {
     snaps: s.snaps || [],
     inbox: s.inbox || [],
     rules: s.rules || [],
+    phone: s.phone || [],
+    phoneTests: s.phoneTests || [],
     notifLog: s.notifLog || [],
     settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null, proxyUrl: '', plannedSeeded: false }, s.settings || {}),
     meta: s.meta || { driveFileId: null, lastSync: null },
@@ -624,6 +626,7 @@ function viewDiario() {
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
     ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryHistory(habits)}</div>` : ''}
+    ${typeof phoneSection === 'function' ? phoneSection(habits) : ''}
     ${arch.length ? `<details><summary>Archiviate (${arch.length})</summary><div>${arch.map(h => { const st = habitStats(h); return `
       <button class="item" style="padding:8px 0;background:transparent;border:none" onclick="editHabit('${h.id}')">
         <div class="tile" style="background:${hexA(h.color, .16)};color:${h.color}">${svg(h.icon, 20)}</div>
@@ -849,7 +852,7 @@ const Drive = {
     const c = await (await this.api('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: this.FILE, parents: ['appDataFolder'], mimeType: 'application/json' }) })).json();
     S.meta.driveFileId = c.id; return c.id;
   },
-  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, inbox: S.inbox, rules: S.rules, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
+  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, inbox: S.inbox, rules: S.rules, phone: S.phone, phoneTests: S.phoneTests, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
   mergeArr(local, remote) {
     const m = new Map(); [...local, ...remote].forEach(x => { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); });
     return [...m.values()];
@@ -869,14 +872,14 @@ const Drive = {
       if (interactive) await this.init(true); else await this.ensureToken();
       const id = await this.findFile();
       const remote = await (await this.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json().catch(() => null);
-      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
+      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
       const before = sig();
       if (remote && remote.version) {
         S.expenses = this.mergeArr(S.expenses, remote.expenses || []);
         S.categories = this.mergeArr(S.categories, remote.categories || []);
         S.habits = this.mergeArr(S.habits, remote.habits || []);
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
-        ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
+        ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
         if ((remote.categories || []).length) dropPristineDefaults();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
         if (remote.settings && (remote.settingsAt || 0) > (S.meta.settingsAt || 0)) { Object.assign(S.settings, pickSettings(remote.settings)); S.meta.settingsAt = remote.settingsAt; S.meta.settingsHash = JSON.stringify(pickSettings(S.settings)); }
@@ -913,7 +916,7 @@ function det(id, title, body, dflt = false) {
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
-  ['2026-10-25', ['Portafoglio: consigli completi e quanto puoi investire, tutto in una pagina; Esplora tolta (resta l\'analisi dettagliata delle spese da Analisi)', 'Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
+  ['2026-10-25', ['Diario → Telefono: tempo di schermo, sblocchi, app più usate e il test dell\'ora (nell\'app Android)', 'Consigli del portafoglio: ETF della categoria da justETF, tocca il nome per aprire la scheda', 'Portafoglio: consigli completi e quanto puoi investire, tutto in una pagina; Esplora tolta (resta l\'analisi dettagliata delle spese da Analisi)', 'Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
   ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
   ['2026-10-11', ['Lettura degli SMS delle banche, con importazione dello storico', 'Nuovi widget: oggi puoi spendere, ritmo del mese, da confermare']],
@@ -1178,7 +1181,7 @@ function applyPlan(plan) {
     S.expenses = Drive.mergeArr(S.expenses, b.expenses || []);
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
-    ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
+    ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
     // Pagamenti pianificati da togliere comunque (es. il PAC unico sostituito dai PAC per strumento), anche se modificati dopo.
     (b.removePlanned || []).forEach(id => { const p = S.planned.find(x => x.id === id); if (p && !p.deleted) { p.deleted = true; p.updatedAt = Date.now(); } });
     // Pagamenti pianificati importati con il nome della categoria (es. dal file di Trade Republic): la risolve qui.

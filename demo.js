@@ -80,7 +80,13 @@ function demoData() {
     { id: 'demo-n1', at: now - 3600e3, date: today, time: '09:12', amount: 3.2, merchant: 'Bar Centrale', type: 'expense', apps: ['Satispay'], cat: 'ristoranti', dup: null, status: 'pending', updatedAt: 1 },
     { id: 'demo-n2', at: now - 7200e3, date: today, time: '08:05', amount: 58.4, merchant: 'Esselunga', type: 'expense', apps: ['Nexi'], cat: 'spesa', dup: null, status: 'pending', updatedAt: 1 },
   ];
+  // Uso del telefono: più sblocchi nei giorni feriali, qualche notte oltre mezzanotte.
+  const phone = []; for (let i = 45; i >= 0; i--) { const d = addDays(today, -i), wk = [0, 6].includes(new Date(d + 'T12:00:00').getDay()), u = Math.round(between(45, 95) + (wk ? -10 : 0)), late = rnd() < 0.35 ? Math.round(between(5, 50)) : 0;
+    phone.push({ id: d, date: d, screenMin: Math.round(u * between(2.2, 3.4)), unlocks: u, first: `0${6 + Math.floor(rnd() * 3)}:${String(Math.floor(rnd() * 60)).padStart(2, '0')}`, last: late ? `00:${String(Math.floor(rnd() * 59)).padStart(2, '0')}` : `23:${String(Math.floor(rnd() * 59)).padStart(2, '0')}`, lateMin: late,
+      apps: [{ n: 'Instagram', min: Math.round(between(25, 75)), opens: Math.round(between(10, 30)) }, { n: 'WhatsApp', min: Math.round(between(20, 50)), opens: Math.round(between(15, 40)) }, { n: 'Chrome', min: Math.round(between(10, 35)), opens: Math.round(between(4, 12)) }], updatedAt: 1 }); }
+  const phoneTests = [{ id: 'demo-pt1', date: addDays(today, -3), count: 9, mins: 60, updatedAt: 1 }];
   return {
+    phone, phoneTests,
     expenses: ex, categories, habits: habits.map(({ f, ...h }) => ({ ...h, updatedAt: 1 })), habitLogs, accounts: ['Carta', 'Satispay', 'Conto', 'Broker'],
     planned, holdings: holdings.map(({ base, step, pac, ...h }) => ({ ...h, updatedAt: 1 })), trades, snaps, inbox, rules: [], notifLog: [],
     settings: { ...S.settings, name: 'Demo', plannedSeeded: true, driveOn: false, anaWidgets: null, liquidity: 9000 },

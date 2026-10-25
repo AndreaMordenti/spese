@@ -205,6 +205,24 @@ const ETF_KB = {
   IE00B0M62X26: { name: 'iShares € Inflation Linked Govt Bond', idx: 'euro-infl', cls: 'bond', ter: 0.09 },
   IE00B579F325: { name: 'Invesco Physical Gold (ETC)', idx: 'gold', cls: 'gold', ter: 0.12 },
 };
+// ETF di esempio per categoria, i più grandi per patrimonio su justETF (dati verificati il 25/10/2026: TER e dimensione in mln €).
+const ETF_CAT = {
+  usa: ['Azioni USA', [['IE00B5BMR087', 'iShares Core S&P 500', 0.07, 139790], ['IE00BFMXXD54', 'Vanguard S&P 500', 0.07, 33475]]],
+  europe: ['Azioni Europa', [['IE00B4K48X80', 'iShares Core MSCI Europe', 0.12, 16024], ['IE00BK5BQX27', 'Vanguard FTSE Developed Europe', 0.10, 3186]]],
+  japan: ['Azioni Giappone', [['IE00B4L5YX21', 'iShares Core MSCI Japan IMI', 0.12, 7490]]],
+  pacific: ['Azioni sviluppati fuori USA', [['IE0006WW1TQ4', 'Xtrackers MSCI World ex USA', 0.15, 7125]]],
+  em: ['Azioni emergenti', [['IE00BKM4GZ66', 'iShares Core MSCI EM IMI', 0.18, 38385], ['IE00BK5BR733', 'Vanguard FTSE Emerging Markets', 0.17, 2254]]],
+  small: ['Azioni small cap', [['IE00BF4RFH31', 'iShares MSCI World Small Cap', 0.35, 7973]]],
+  world: ['Azioni globali', [['IE00BK5BQT80', 'Vanguard FTSE All-World', 0.14, 55656], ['IE00B3YLTY66', 'SPDR MSCI ACWI IMI', 0.17, 8371]]],
+  bond: ['Obbligazioni', [['IE00BDBRDM35', 'iShares Core Global Aggregate Bond EUR Hedged', 0.10, 2611], ['IE00BG47KH54', 'Vanguard Global Aggregate Bond EUR Hedged', 0.08, 2387], ['IE00B4WXJJ64', 'iShares Core € Govt Bond', 0.07, 5371], ['LU0290355717', 'Xtrackers Eurozone Government Bond', 0.07, 2446]]],
+};
+const justEtf = isin => `https://www.justetf.com/it/etf-profile.html?isin=${isin}`;
+function etfCatList(k) {
+  const c = ETF_CAT[k]; if (!c) return '';
+  const held = new Set(holdingsLive().map(h => h.isin));
+  return `<div class="col" style="gap:2px;margin-top:2px"><span class="small muted" style="font-weight:700">ETF della categoria · ${c[0]}</span>${c[1].map(([isin, n, ter, sz]) => `
+    <div class="row between small" style="gap:8px;padding:5px 0;border-bottom:1px solid var(--line, var(--surface-2))"><span class="col" style="gap:1px;min-width:0"><a href="${justEtf(isin)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700;text-decoration:none">${esc(n)}</a><span class="muted num">${isin}${held.has(isin) ? ' · ce l\'hai già' : ''}</span></span><span class="num muted" style="text-align:right;flex-shrink:0">TER ${ter.toFixed(2).replace('.', ',')}%<br>${sz >= 1000 ? Math.round(sz / 1000) + ' mld €' : sz + ' mln €'}</span></div>`).join('')}</div>`;
+}
 // Quale indice contiene già quale (sovrapposizioni).
 const CONTAINS = { 'msci-world': ['sp500', 'msci-europe', 'japan-imi', 'world-ex-usa'], 'all-world': ['msci-world', 'sp500', 'msci-europe', 'japan-imi', 'world-ex-usa', 'em-imi'], 'acwi-imi': ['msci-world', 'sp500', 'msci-europe', 'japan-imi', 'world-ex-usa', 'em-imi', 'world-small'], 'global-govt': ['euro-govt'], 'global-agg': ['global-govt', 'euro-govt'] };
 // "il 61%" ma "l'11%", "l'1%", "l'80%".
@@ -219,11 +237,12 @@ function pfLook() {
 }
 function pfAdvice() {
   const L = pfLook(); if (!L.rows.length) return null;
-  const geo = [], risk = [], p1 = v => Math.round(v) + '%', name = r => esc(r.h.name.replace(/\s*\((Acc|Dist)\)/, ''));
+  const geo = [], risk = [], cats = { geo: [], risk: null }, p1 = v => Math.round(v) + '%', name = r => esc(r.h.name.replace(/\s*\((Acc|Dist)\)/, ''));
   // A) Geografia e tipo di aziende
   Object.keys(REGIONS).forEach(k => {
     const d = L.reg[k] - MARKET[k];
     if (d < -5) {
+      cats.geo.push(k);
       const mine = L.eq.find(r => (r.kb.reg[k] || 0) >= 90);
       const alt = Object.entries(ETF_KB).find(([, e]) => e.cls === 'eq' && (e.reg[k] || 0) >= 90 && !L.held.some(i => overlaps(i, e.idx)));
       geo.push(`${REGIONS[k]} ${p1(L.reg[k])} → ${p1(MARKET[k])}: ${mine ? `aumenta il PAC ${name(mine)}` : alt ? `aggiungi ${esc(alt[1].name)} <span class="num">(${alt[0]})</span>` : 'aumenta l\'esposizione'}`);
@@ -231,11 +250,13 @@ function pfAdvice() {
   });
   const rs = L.rows.filter(r => r.kb);
   rs.forEach((a, i) => rs.slice(i + 1).forEach(b => { if (overlaps(a.kb.idx, b.kb.idx)) { const small = (CONTAINS[a.kb.idx] || []).includes(b.kb.idx) ? b : a, big = small === a ? b : a; geo.push(`${name(small)} è già dentro ${name(big)}: ${pacOf(small.h.id) ? 'sospendi il suo PAC' : 'non aggiungerne'}`); } }));
+  if (!L.held.some(i => ['world-small', 'acwi-imi'].includes(i))) cats.geo.push('small');
   if (!L.held.some(i => ['world-small', 'acwi-imi'].includes(i))) geo.push(`Small cap 0% → ~10%: iShares MSCI World Small Cap <span class="num">(IE00BF4RFH31)</span>`);
   // B) Profilo di rischio
   const B = balanceData(), t = balTarget();
   if (B.tot) {
     const inBand = B.eqPct >= t.lo && B.eqPct <= t.hi, M = B.M;
+    if (B.eqPct > t.hi) cats.risk = 'bond'; else if (B.eqPct < t.lo) cats.risk = 'world';
     risk.push(`Profilo ${riskLabel()}: azioni ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%, ora <b>${(B.eqPct * 100).toFixed(1).replace('.', ',')}%</b>`);
     if (M > 0 && !inBand) {
       const toBond = Math.max(0, Math.min(M, B.eq + M - t.mid * (B.tot + M))), split = [...balSplit(B, 'eq', M - toBond), ...balSplit(B, 'bond', toBond)].filter(x => Math.round(x.amount) > 0);
@@ -243,7 +264,7 @@ function pfAdvice() {
     } else if (M > 0) risk.push('In fascia: mantieni i PAC come sono');
     if (M > 0) risk.push(`A regime ogni mese: ${[...balSplit(B, 'eq', M * t.mid), ...balSplit(B, 'bond', M * (1 - t.mid))].map(x => `${name(x.r)} ${fmtMoney(Math.round(x.amount)).replace(',00', '')}`).join(' · ')}`);
   }
-  return { geo, risk, L, B };
+  return { geo, risk, cats, L, B };
 }
 function exDiversificazione() {
   const A = pfAdvice(); if (!A) return '<div class="empty">Aggiungi i tuoi strumenti in Portafoglio per vedere i consigli.</div>';
@@ -255,15 +276,17 @@ function exDiversificazione() {
         ${Object.keys(REGIONS).map((k, i) => `<div class="col" style="gap:4px"><div class="row between small"><span>${REGIONS[k]}</span><span class="num"><b>${Math.round(L.reg[k])}%</b> <span class="muted">/ ${MARKET[k]}%</span></span></div>${bar(L.reg[k], MARKET[k], PALETTE[i])}</div>`).join('')}
         <span class="small muted">Barra = tu · linea = mercato globale</span>
         ${A.geo.length ? A.geo.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('') : '<span class="small">• In linea con il mercato globale</span>'}
+        ${A.cats.geo.map(etfCatList).join('')}
       </div>
       <div class="card col" style="gap:12px"><span style="font-weight:800">B · Profilo di rischio</span>
         ${B.tot ? `<div class="col" style="gap:4px"><div class="row between small"><span>Azioni</span><span class="num"><b>${Math.round(B.eqPct * 100)}%</b> <span class="muted">/ ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%</span></span></div>
           <div style="position:relative;height:8px;border-radius:4px;background:var(--surface-2)"><div style="position:absolute;left:${t.lo * 100}%;width:${(t.hi - t.lo) * 100}%;top:0;bottom:0;background:${hexA('#6EE7B7', .35)}"></div><div style="width:${B.eqPct * 100}%;height:100%;border-radius:4px;background:var(--accent);opacity:.85"></div></div></div>` : ''}
         ${A.risk.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('')}
+        ${A.cats.risk ? etfCatList(A.cats.risk) : ''}
         <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(RISK).map(([k, r]) => `<button class="chip ${riskProfile() === k ? 'on' : ''}" style="height:32px" onclick="S.settings.risk='${k}';save();route()">${r[0]} ${r[1]}–${r[2]}%</button>`).join('')}</div>
       </div>
     </div>
-    <span class="hint">Pesi indicativi, non consulenza finanziaria.</span>`;
+    <span class="hint">Pesi indicativi, non consulenza finanziaria. Gli ETF elencati sono i più grandi della categoria su justETF, da confrontare: tocca il nome per aprire la scheda.</span>`;
 }
 
 // ---------- Schermata ----------

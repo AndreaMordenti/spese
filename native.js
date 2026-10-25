@@ -139,7 +139,7 @@ async function nativeBoot() {
     if (items.length) { save(); if (location.hash === '#diario') route(); }
     return items.length;
   };
-  const pull = async () => { if (W) await diaryPull(); const n = (await ingestNotifications()) + (typeof ingestSms === 'function' ? await ingestSms() : 0); if (n && ['#home', '#inbox', ''].includes(location.hash)) route(); };
+  const pull = async () => { if (W) { await diaryPull(); if (typeof phonePull === 'function') phonePull(); } const n = (await ingestNotifications()) + (typeof ingestSms === 'function' ? await ingestSms() : 0); if (n && ['#home', '#inbox', ''].includes(location.hash)) route(); };
   pull(); document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
   onDataSaved();
 }
