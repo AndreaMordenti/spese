@@ -199,7 +199,7 @@ function renderNav(active) {
   // Su computer la stessa barra diventa una colonna laterale: marchio in alto e Impostazioni in fondo (solo desktop).
   $('#nav').innerHTML = `<div class="brand desk-only"><img src="icon-192.png" alt="">Slow</div>` + items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}<span class="fab-label">Nuovo movimento</span></a>`
-    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>` + (r === 'analisi' ? `<a href="#esplora" class="desk-only ${active === 'esplora' ? 'on' : ''}">${svg('search', 24)}<span>Esplora</span></a>` : '')).join('')
+    : `<a href="#${r}" class="${active === r ? 'on' : ''}">${svg(ic, 24)}<span>${label}</span></a>`).join('')
     + `<a href="#impostazioni" class="desk-only nav-settings ${active === 'impostazioni' ? 'on' : ''}">${svg('gear', 24)}<span>Impostazioni</span></a>`;
 }
 
@@ -551,7 +551,7 @@ function viewAnalisi() {
     <div class="row between">
       <span class="title">Analisi</span>
       <div class="row" style="gap:8px">
-        <button class="chip" onclick="go('#esplora')" aria-label="Esplora: analisi dettagliate">${svg('search', 18)}</button>
+        <button class="chip" onclick="go('#esplora')" aria-label="Analisi dettagliata delle spese">${svg('search', 18)}</button>
         <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
         <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
         ${gearBtn()}
@@ -913,7 +913,7 @@ function det(id, title, body, dflt = false) {
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
-  ['2026-10-25', ['Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
+  ['2026-10-25', ['Portafoglio: consigli completi e quanto puoi investire, tutto in una pagina; Esplora tolta (resta l\'analisi dettagliata delle spese da Analisi)', 'Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
   ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
   ['2026-10-11', ['Lettura degli SMS delle banche, con importazione dello storico', 'Nuovi widget: oggi puoi spendere, ritmo del mese, da confermare']],

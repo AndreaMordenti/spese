@@ -268,13 +268,11 @@ function exDiversificazione() {
 
 // ---------- Schermata ----------
 const EX_TABS = [['spese', 'Spese'], ['risparmio', 'Risparmio'], ['diario', 'Diario'], ['diversificazione', 'Diversificazione']];
-function viewEsplora(args) {
-  if (args && args[0] && EX_TABS.some(t => t[0] === args[0])) EX.tab = args[0];
-  const body = { spese: exSpese, risparmio: exRisparmio, diario: exDiario, diversificazione: exDiversificazione }[EX.tab]();
+function viewEsplora() {
+  EX.tab = 'spese';
   return `
-    <div class="row between"><div class="col" style="gap:2px"><span class="title">Esplora</span><span class="small muted">Analisi dettagliate e filtrabili</span></div>${typeof gearBtn === 'function' ? gearBtn() : ''}</div>
-    <div class="segmented ex-tabs">${EX_TABS.map(([k, l]) => `<button class="${EX.tab === k ? 'on' : ''}" onclick="EX.tab='${k}';route()">${l}</button>`).join('')}</div>
-    ${EX.tab === 'spese' ? exFilters() : EX.tab === 'diario' ? exFilters(true) : ''}
-    ${body}`;
+    <div class="row between"><button class="chip" onclick="go('#analisi')" aria-label="Indietro">${svg('back', 16, 2.5)}</button><div class="col grow" style="gap:2px;margin-left:10px"><span class="title" style="font-size:22px">Analisi dettagliata</span><span class="small muted">Spese ed entrate filtrabili</span></div>${typeof gearBtn === 'function' ? gearBtn() : ''}</div>
+    ${exFilters()}
+    ${exSpese()}`;
 }
 VIEWS.esplora = viewEsplora;
