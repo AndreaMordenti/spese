@@ -281,7 +281,7 @@ function expenseRow(e) {
   const c = catById(e.cat), inc = typeOf(e) === 'income';
   return `<button class="item" onclick="openExpense('${e.id}')">
     <div class="tile" style="background:${hexA(c.color, .16)};color:${c.color}">${svg(c.icon)}</div>
-    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(e.note || c.name)}</span><span class="small muted truncate">${fmtDate(e.date)}${e.time ? ', ' + e.time : ''}${e.note ? ' · ' + esc(c.name) : ''}${e.source === 'scan' ? ' · Scontrino' : ''}${e.source === 'planned' ? ' · Pianificato' : ''}${e.account && S.accounts.length > 1 ? ' · ' + esc(e.account) : ''}</span></div>
+    <div class="col grow"><span class="truncate" style="font-weight:700">${esc(e.note || c.name)}</span><span class="small muted truncate">${fmtDate(e.date)}${e.time ? ', ' + e.time : ''}${e.note ? ' · ' + esc(c.name) : ''}${e.receipt ? ' · 📎' : e.source === 'scan' ? ' · Scontrino' : ''}${(e.tags || []).map(t => ' #' + esc(t)).join('')}${e.source === 'planned' ? ' · Pianificato' : ''}${e.account && S.accounts.length > 1 ? ' · ' + esc(e.account) : ''}</span></div>
     <span class="num" style="font-size:16px;font-weight:600;color:${inc ? 'var(--accent)' : 'inherit'}">${inc ? '+' : '-'}${fmtMoney(e.amount, false)}</span>
   </button>`;
 }
@@ -315,7 +315,7 @@ function topCats(type) {
 function newDraft(type = 'expense') { const t = topCats(type)[0]; return { id: null, type, amountStr: '0', cat: t ? t.id : '', note: '', date: todayISO(), time: nowHM(), account: S.accounts[0] || '', source: 'manual' }; }
 function openExpense(id) {
   const e = S.expenses.find(x => x.id === id); if (!e) return;
-  draft = { id, type: typeOf(e), amountStr: String(e.amount).replace('.', ','), cat: e.cat, note: e.note || '', date: e.date, time: e.time || '', account: e.account || '', source: e.source || 'manual' };
+  draft = { id, type: typeOf(e), amountStr: String(e.amount).replace('.', ','), cat: e.cat, note: e.note || '', date: e.date, time: e.time || '', account: e.account || '', source: e.source || 'manual', receipt: e.receipt || null, tags: (e.tags || []).slice() };
   go('#aggiungi/edit');
 }
 function setDraftType(t) {
@@ -386,6 +386,7 @@ function viewAggiungi(args) {
       <div class="hscroll cat-strip">${quick.map(c => `<button class="chip ${c.id === draft.cat ? 'on' : ''}" onclick="pickCat('${c.id}')"><span class="dot" style="background:${c.color}"></span><span class="truncate">${esc(c.name)}</span></button>`).join('')}</div>
     </div>
     <input class="mini-note" type="text" placeholder="Nota (facoltativa)" value="${esc(draft.note)}" oninput="draft.note=this.value">
+    ${typeof receiptTagRow === 'function' ? receiptTagRow() : ''}
     <div class="add-bottom">
       <div class="keypad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="key('${n}')">${n}</button>`).join('')}
@@ -413,10 +414,11 @@ function saveDraft() {
   const now = Date.now();
   if (draft.id) {
     const e = S.expenses.find(x => x.id === draft.id);
-    Object.assign(e, { type: draft.type, amount, cat: draft.cat, note: draft.note.trim(), date: draft.date, time: draft.time, account: draft.account, updatedAt: now });
+    Object.assign(e, { type: draft.type, amount, cat: draft.cat, note: draft.note.trim(), date: draft.date, time: draft.time, account: draft.account, receipt: draft.receipt || null, tags: draft.tags || [], updatedAt: now });
   } else {
-    S.expenses.push({ id: uid(), type: draft.type, amount, cat: draft.cat, note: draft.note.trim(), date: draft.date, time: draft.time, account: draft.account, source: draft.source, updatedAt: now });
+    S.expenses.push({ id: uid(), type: draft.type, amount, cat: draft.cat, note: draft.note.trim(), date: draft.date, time: draft.time, account: draft.account, source: draft.source, receipt: draft.receipt || null, tags: draft.tags || [], updatedAt: now });
   }
+  if (draft.receiptNew && draft.receipt) S.meta.rcptPending = [...(S.meta.rcptPending || []), draft.receipt]; // la foto va su Drive al prossimo salvataggio
   // Pagamento arrivato da una notifica: lo segna come confermato e ricorda la categoria per quell'esercente.
   if (draft.inboxId && typeof inboxById === 'function') { const x = inboxById(draft.inboxId); if (x) { learnRule(x.merchant, draft.cat); Object.assign(x, { status: 'done', updatedAt: now }); } }
   const back = draft.inboxId ? '#inbox' : '#home';
@@ -524,7 +526,8 @@ const ANA_WIDGETS = {
       ${hs.length ? hs.map(({ h, n }) => `<div class="col" style="gap:8px"><div class="row between small"><span class="row" style="gap:8px;font-weight:700"><span style="color:${h.color}">${svg(h.icon, 16)}</span>${esc(h.name)}</span><span class="num muted">${n} ${n === 1 ? 'giorno' : 'giorni'}</span></div><div class="bar"><div style="width:${Math.min(100, Math.round(n / c.p.elapsed * 100))}%;background:${h.color}"></div></div></div>`).join('') : '<span class="muted small">Nessuna attività nel diario.</span>'}
     </div>`; } },
 };
-const anaActive = () => (Array.isArray(S.settings.anaWidgets) ? S.settings.anaWidgets : ANA_DEFAULT).filter(id => ANA_WIDGETS[id]);
+// L'elenco per categoria va sempre in fondo: prima i grafici.
+const anaActive = () => { const a = (Array.isArray(S.settings.anaWidgets) ? S.settings.anaWidgets : ANA_DEFAULT).filter(id => ANA_WIDGETS[id]); return [...a.filter(id => id !== 'categorie'), ...a.filter(id => id === 'categorie')]; };
 function anaSet(ids) { S.settings.anaWidgets = ids; save(false); route(); }
 function anaToggleEdit() { anaEdit = !anaEdit; route(); }
 function anaAdd(id) { anaSet([...anaActive().filter(x => x !== id), id]); }
@@ -620,7 +623,7 @@ function viewDiario() {
           <button class="check ${done ? 'on' : ''}" onclick="toggleLog('${h.id}','${diaryDate}')" aria-label="${done ? 'Annulla' : 'Segna fatto'}">${svg('check', 20, 3)}</button>
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
-    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryOverview(habits)}${diaryHistory(habits)}</div>` : ''}
+    ${habits.length ? `<div class="col" style="gap:10px"><span class="section-title">Storico</span>${diaryHistory(habits)}</div>` : ''}
     ${arch.length ? `<details><summary>Archiviate (${arch.length})</summary><div>${arch.map(h => { const st = habitStats(h); return `
       <button class="item" style="padding:8px 0;background:transparent;border:none" onclick="editHabit('${h.id}')">
         <div class="tile" style="background:${hexA(h.color, .16)};color:${h.color}">${svg(h.icon, 20)}</div>
@@ -745,7 +748,9 @@ async function onScanFile(file) {
 function confirmScan() {
   const amount = parseFloat($('#r-total').value);
   if (!amount) return toast('Controlla il totale');
-  S.expenses.push({ id: uid(), type: 'expense', amount, cat: $('#r-cat').value, note: $('#r-merchant').value.trim(), date: $('#r-date').value || todayISO(), time: '', account: $('#r-account').value, source: 'scan', updatedAt: Date.now() });
+  const rid = scan.img && typeof RDB !== 'undefined' ? 'rc-' + uid() : null;
+  if (rid) { RDB.put(rid, scan.img).catch(() => {}); S.meta.rcptPending = [...(S.meta.rcptPending || []), rid]; }
+  S.expenses.push({ id: uid(), type: 'expense', amount, cat: $('#r-cat').value, note: $('#r-merchant').value.trim(), date: $('#r-date').value || todayISO(), time: '', account: $('#r-account').value, source: 'scan', receipt: rid, tags: [], updatedAt: Date.now() });
   save(); scan = { img: null, result: null, busy: false, error: null }; toast('Spesa salvata'); go('#home');
 }
 function resizeImage(file, max, q) {
@@ -801,7 +806,7 @@ const AI = {
 const GOOGLE_CLIENT_ID = '1024229130794-s41f7heqdmc489odeq3t1sb5uas63b2o.apps.googleusercontent.com';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 // Impostazioni che seguono l'utente su tutti i dispositivi (tema, notifiche e chiavi restano per dispositivo).
-const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint', 'saveBuffer', 'emergencyMonths', 'liquidity'];
+const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint', 'saveBuffer', 'emergencyMonths', 'liquidity', 'risk'];
 const pickSettings = st => Object.fromEntries(SYNCED_SETTINGS.filter(k => k in st).map(k => [k, st[k]]));
 const Drive = {
   state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json', running: null, again: false,
@@ -878,6 +883,7 @@ const Drive = {
         normalizeHabits(); postPlanned();
       }
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(this.payload()) });
+      if (typeof receiptsSync === 'function') await receiptsSync();
       this.lastError = ''; S.settings.driveOn = true; S.meta.lastSync = Date.now(); S.meta.dirty = false; save(false); this.setState('ok');
       if (interactive) toast('Sincronizzato con Google Drive');
       if (interactive || (sig() !== before && location.hash !== '#aggiungi')) route();
@@ -907,7 +913,7 @@ function det(id, title, body, dflt = false) {
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
-  ['2026-10-25', ['Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
+  ['2026-10-25', ['Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
   ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
   ['2026-10-11', ['Lettura degli SMS delle banche, con importazione dello storico', 'Nuovi widget: oggi puoi spendere, ritmo del mese, da confermare']],

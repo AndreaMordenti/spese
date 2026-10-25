@@ -109,51 +109,113 @@ function pfHoldingRow(r) {
     <div class="col" style="align-items:flex-end;gap:2px">${p.missing ? '<span class="small" style="color:var(--warn)">Prezzo mancante</span>' : `<span class="num" style="font-size:16px;font-weight:600">${p.qty ? fmtMoney(p.value, false) : sgnMoney(p.realized + p.div)}</span>${p.qty ? `<span class="small num" style="color:${gainColor(p.gain)}">${sgnPct(p.pct)}</span>` : ''}`}</div>
   </button>`;
 }
+// ---------- Grafico del valore (stile Trade Republic / eToro) ----------
+// Prezzi storici giornalieri da Yahoo, conservati sul dispositivo (non su Drive) e aggiornati due volte al giorno.
+const HIST_KEY = 'slow.hist';
+const histCache = () => { try { return JSON.parse(localStorage.getItem(HIST_KEY) || '{}'); } catch (e) { return {}; } };
+let pfRange = '3M', pfHistBusy = false;
+async function pfLoadHistory() {
+  if (pfHistBusy || DEMO) return;
+  const c = histCache(), need = holdingsLive().filter(h => h.symbol && h.type !== 'crypto' && position(h).qty > 0 && (!c[h.symbol] || Date.now() - c[h.symbol].at > 12 * 3600e3));
+  if (!need.length) return;
+  pfHistBusy = true; let changed = false;
+  for (const h of need) {
+    try {
+      const j = await Quotes.json('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(h.symbol) + '?range=5y&interval=1d'), r = j.chart.result[0];
+      let cur = r.meta.currency, k = 1; if (cur === 'GBp' || cur === 'GBX') { k = 0.01; cur = 'GBP'; }
+      const f = (await Quotes.fx(cur)) * k, cl = (r.indicators.quote[0] || {}).close || [];
+      c[h.symbol] = { at: Date.now(), pts: r.timestamp.map((t, i) => [Math.floor(t / 86400), cl[i] == null ? null : Math.round(cl[i] * f * 1e4) / 1e4]).filter(p => p[1] != null) };
+      changed = true;
+    } catch (e) { /* senza storico si usano i prezzi delle operazioni */ }
+  }
+  pfHistBusy = false;
+  if (changed) { try { localStorage.setItem(HIST_KEY, JSON.stringify(c)); } catch (e) { /* spazio pieno: niente cache */ } if (location.hash === '#portafoglio') route(); }
+}
+// Valore del portafoglio giorno per giorno: quote possedute × prezzo di quel giorno. "cost" = capitale investito.
+function pfSeries() {
+  const trs = live(S.trades).filter(t => t.kind !== 'div').sort((a, b) => a.date.localeCompare(b.date));
+  if (!trs.length) return [];
+  const c = histCache(), d0 = isoDay(trs[0].date), d1 = isoDay(todayISO()), hs = holdingsLive();
+  const prices = {}; hs.forEach(h => {
+    const pts = [...((h.symbol && c[h.symbol]) ? c[h.symbol].pts : []), ...tradesOf(h.id).filter(t => t.price > 0).map(t => [isoDay(t.date), Number(t.price)])];
+    if (h.price) pts.push([d1, Number(h.price)]);
+    prices[h.id] = pts.sort((a, b) => a[0] - b[0]);
+  });
+  const qty = {}, costH = {}, ptr = {}, last = {}; let ti = 0; const out = [];
+  for (let d = d0; d <= d1; d++) {
+    while (ti < trs.length && isoDay(trs[ti].date) <= d) {
+      const t = trs[ti++], id = t.holdingId, q = Number(t.qty), held = qty[id] || 0;
+      if (t.kind === 'buy') { qty[id] = held + q; costH[id] = (costH[id] || 0) + q * Number(t.price) + Number(t.fee || 0); }
+      else if (t.kind === 'sell' && held > 0) { const sold = Math.min(q, held); costH[id] -= (costH[id] || 0) / held * sold; qty[id] = held - sold; } // vendita: esce il costo medio delle quote vendute
+    }
+    const cost = Object.values(costH).reduce((x, y) => x + y, 0);
+    let v = 0;
+    hs.forEach(h => { const pts = prices[h.id]; let i = ptr[h.id] || 0; while (i < pts.length && pts[i][0] <= d) { last[h.id] = pts[i][1]; i++; } ptr[h.id] = i; v += (qty[h.id] || 0) * (last[h.id] || 0); });
+    out.push({ d, v: Math.round(v * 100) / 100, cost: Math.max(0, Math.round(cost * 100) / 100) });
+  }
+  return out;
+}
+const PF_RANGES = [['1S', 7], ['1M', 30], ['3M', 91], ['1A', 365], ['Max', 0]];
 function pfChart(T) {
-  const trades = live(S.trades).filter(t => t.kind !== 'div').sort((a, b) => a.date.localeCompare(b.date));
-  if (!trades.length) return '';
-  let net = 0; const contrib = [];
-  trades.forEach(t => { net += (t.kind === 'buy' ? 1 : -1) * (Number(t.qty) * Number(t.price) + (t.kind === 'buy' ? 1 : -1) * Number(t.fee || 0)); contrib.push({ d: isoDay(t.date), v: Math.max(0, net) }); });
-  contrib.push({ d: isoDay(todayISO()), v: Math.max(0, net) });
-  const snaps = S.snaps.slice().sort((a, b) => a.date.localeCompare(b.date)).map(s => ({ d: isoDay(s.date), v: s.value }));
-  const c = timeChart([{ pts: contrib, color: 'var(--muted)', width: 2, dashed: true }, { pts: snaps, color: 'var(--accent)', width: 3, trend: true }], { project: snaps.length >= 3, aria: 'Valore del portafoglio e capitale versato' });
-  if (!c.svg) return '';
-  const tr = c.trends[1], per30 = tr ? tr.b * 30 : null;
-  return `<div class="card col" style="gap:14px">
-    <div class="row between"><span style="font-weight:800">Andamento</span><span class="row small muted" style="gap:10px"><span class="row" style="gap:6px"><span class="dot" style="background:var(--accent)"></span>Valore</span><span class="row" style="gap:6px"><span class="dot" style="background:var(--muted)"></span>Versato</span></span></div>
-    ${c.svg}
-    ${tr ? `<div class="row between" style="border-top:1px solid var(--line);padding-top:12px"><div class="stat"><span class="v num" style="font-size:18px;color:${gainColor(per30)}">${sgnMoney(per30)}</span><span class="small muted">tendenza a 30 giorni</span></div><div class="stat" style="text-align:right"><span class="v num" style="font-size:18px">${fmtMoney(Math.max(0, tr.a + tr.b * (isoDay(todayISO()) + 30)))}</span><span class="small muted">valore stimato</span></div></div><span class="hint">Linea tratteggiata arancio: tendenza lineare del valore. Include i versamenti, quindi sale anche solo perché investi di più.</span>`
-      : `<span class="hint">Il valore si costruisce giorno per giorno ogni volta che apri l'app con i prezzi aggiornati. Con almeno 3 giorni compare la linea di tendenza.</span>`}
+  const all = pfSeries(); if (all.length < 2) return '';
+  const n = (PF_RANGES.find(r => r[0] === pfRange) || PF_RANGES[2])[1], pts = n ? all.slice(-n - 1) : all, a = pts[0], z = pts[pts.length - 1];
+  // Rendimento del periodo al netto dei versamenti fatti nel periodo (come nelle app dei broker).
+  const added = z.cost - a.cost, perf = (z.v - a.v) - added, pct = (a.v + Math.max(0, added)) ? perf / (a.v + Math.max(0, added)) * 100 : 0;
+  const W = 340, H = 170, vs = pts.flatMap(p => [p.v, p.cost]), lo = Math.min(...vs) * 0.98, hi = Math.max(...vs) * 1.01;
+  const X = i => (W * i) / (pts.length - 1), Y = v => 6 + (H - 12) * (1 - (v - lo) / ((hi - lo) || 1));
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1)).join('');
+  const inv = pts.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.cost).toFixed(1)).join('');
+  const col = perf >= 0 ? 'var(--accent)' : 'var(--warn)';
+  window.__pfPts = pts;
+  const fmtD = d => new Date((d + 0.5) * 864e5).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: n === 0 || n >= 365 ? '2-digit' : undefined, timeZone: 'UTC' });
+  return `<div class="card col" style="gap:10px">
+    <div class="row between"><span id="pf-scrub" class="small muted">${pfRange === 'Max' ? 'Da sempre' : 'Ultimo ' + { '1S': 'settimana', '1M': 'mese', '3M': 'trimestre', '1A': 'anno' }[pfRange]}</span>
+      <span class="num" style="font-weight:800;color:${col}">${sgnMoney(perf)} (${sgnPct(pct)})</span></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="touch-action:pan-y" onpointermove="pfScrub(event,this)" onpointerleave="pfScrubEnd()" role="img" aria-label="Valore del portafoglio nel tempo">
+      <defs><linearGradient id="pfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${perf >= 0 ? '#D4FF5B' : '#FFB36B'};stop-opacity:.28"/><stop offset="1" style="stop-color:${perf >= 0 ? '#D4FF5B' : '#FFB36B'};stop-opacity:0"/></linearGradient></defs>
+      <path d="${line}L${W} ${H}L0 ${H}Z" fill="url(#pfg)"/>
+      <path d="${inv}" style="fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:3 5"/>
+      <path d="${line}" style="fill:none;stroke:${col};stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round"/>
+      <line id="pf-cursor" x1="-10" x2="-10" y1="0" y2="${H}" style="stroke:var(--text);stroke-width:1;opacity:.5"/>
+    </svg>
+    ${holdingsLive().some(h => h.symbol && position(h).qty > 0 && !histCache()[h.symbol]) && !DEMO ? '<span class="small" style="color:var(--warn)">Storico prezzi non ancora scaricato: andamento approssimato.</span>' : ''}
+    <div class="row between small muted"><span>${fmtD(a.d)}</span><span class="row" style="gap:6px"><span style="border-top:2px dashed var(--muted);width:14px;display:inline-block"></span>investito</span><span>Oggi</span></div>
+    <div class="segmented" style="align-self:stretch;justify-content:space-between">${PF_RANGES.map(([k]) => `<button class="${pfRange === k ? 'on' : ''}" style="flex:1" onclick="pfRange='${k}';route()">${k}</button>`).join('')}</div>
   </div>`;
 }
+function pfScrub(ev, el) {
+  const pts = window.__pfPts; if (!pts) return;
+  const r = el.getBoundingClientRect(), i = Math.max(0, Math.min(pts.length - 1, Math.round((ev.clientX - r.left) / r.width * (pts.length - 1)))), p = pts[i];
+  const c = $('#pf-cursor'); if (c) { const x = (340 * i) / (pts.length - 1); c.setAttribute('x1', x); c.setAttribute('x2', x); }
+  const l = $('#pf-scrub'); if (l) l.innerHTML = `<b style="color:var(--text)">${fmtMoney(p.v)}</b> · ${new Date((p.d + 0.5) * 864e5).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · investito ${fmtMoney(p.cost)}`;
+}
+function pfScrubEnd() { const c = $('#pf-cursor'); if (c) { c.setAttribute('x1', -10); c.setAttribute('x2', -10); } }
+
 function viewPortfolio() {
   const T = portfolioTotals(), open = T.rows.filter(r => r.p.qty > 0).sort((a, b) => b.p.value - a.p.value), closed = T.rows.filter(r => !r.p.qty);
   const groups = {}; open.forEach(r => { const k = pfMode === 'tipo' ? (HOLDING_TYPES[r.h.type] || 'Altro') : r.h.name; groups[k] = groups[k] || { label: k, value: 0, color: pfMode === 'tipo' ? PALETTE[Object.keys(HOLDING_TYPES).findIndex(t => HOLDING_TYPES[t] === k) % PALETTE.length] : colorOfHolding(r.h) }; groups[k].value += r.p.value; });
   const items = Object.values(groups).filter(g => g.value > 0).sort((a, b) => b.value - a.value), [int, dec] = fmtMoney(T.value, false).split(',');
-  const last = Math.max(0, ...holdingsLive().map(h => h.priceAt || 0));
+  const last = Math.max(0, ...holdingsLive().map(h => h.priceAt || 0)), adv = typeof pfAdvice === 'function' ? pfAdvice() : null;
   return `
     <div class="row between"><span class="title">Portafoglio</span>
       <div class="row" style="gap:8px"><button class="chip" onclick="pfRefresh()" aria-label="Aggiorna i prezzi">${svg('repeat', 18)}</button><button class="chip" style="color:var(--accent)" onclick="holdingEdit()" aria-label="Aggiungi strumento">${svg('plus', 18, 2.5)}</button>${gearBtn()}</div></div>
     ${holdingsLive().length ? `
-    <div class="col" style="gap:6px">
-      <span class="small muted">Valore del portafoglio</span>
+    <div class="col" style="gap:4px">
       <div class="hero-amount num"><span class="cur">€</span><span class="big">${int}</span><span class="cents">,${dec}</span></div>
-      <div class="row" style="gap:12px;flex-wrap:wrap"><span class="num" style="font-weight:700;color:${gainColor(T.gain)}">${sgnMoney(T.gain)} (${sgnPct(T.pct)})</span><span class="small muted">sul capitale investito</span></div>
-      ${T.day ? `<span class="small num" style="color:${gainColor(T.day)}">Oggi ${sgnMoney(T.day)} (${sgnPct(T.dayPct)})</span>` : ''}
-      <span class="small muted">Prezzi aggiornati: ${ago(last)}</span>
+      <div class="row" style="gap:14px;flex-wrap:wrap" class="small"><span class="num" style="font-weight:700;color:${gainColor(T.gain)}">${sgnMoney(T.gain)} (${sgnPct(T.pct)}) totale</span>${T.day ? `<span class="num small" style="color:${gainColor(T.day)}">${sgnMoney(T.day)} oggi</span>` : ''}</div>
+      <span class="small muted">Investiti ${fmtMoney(T.cost)} · prezzi ${ago(last)}</span>
     </div>
     ${T.missing ? `<div class="empty" style="color:var(--warn);border-color:var(--warn);padding:12px">${T.missing} ${T.missing === 1 ? 'strumento senza prezzo' : 'strumenti senza prezzo'}: tocca per inserirlo o aggiorna i prezzi.</div>` : ''}
-    <div class="card row between" style="gap:8px"><div class="stat"><span class="v num" style="font-size:18px">${fmtMoney(T.cost)}</span><span class="small muted">investito</span></div><div class="stat"><span class="v num" style="font-size:18px">${fmtMoney(T.div)}</span><span class="small muted">dividendi</span></div><div class="stat" style="text-align:right"><span class="v num" style="font-size:18px;color:${gainColor(T.realized)}">${sgnMoney(T.realized)}</span><span class="small muted">realizzato</span></div></div>
     ${pfChart(T)}
+    <div class="col" style="gap:10px"><span class="section-title">Posizioni</span><div class="list">${open.map(pfHoldingRow).join('') || '<div class="empty">Nessuna posizione aperta.</div>'}</div></div>
+    ${adv ? `<div class="card col" style="gap:10px"><div class="row between"><span style="font-weight:800">Consigli</span><a href="#esplora/diversificazione" class="small" style="color:var(--accent)">Dettagli</a></div>${adv.risk.concat(adv.geo).slice(0, 4).map(t => `<span class="small" style="line-height:1.45">• ${t}</span>`).join('')}</div>` : ''}
     ${items.length ? `<div class="card col" style="gap:14px"><div class="row between"><span style="font-weight:800">Allocazione</span><div class="segmented"><button class="${pfMode === 'strumenti' ? 'on' : ''}" onclick="pfMode='strumenti';route()">Strumenti</button><button class="${pfMode === 'tipo' ? 'on' : ''}" onclick="pfMode='tipo';route()">Tipo</button></div></div>
       <div class="row" style="gap:18px"><div class="donut-wrap">${donutSvg(items)}<div class="donut-center"><span class="small muted">${items.length}</span><span class="small muted">${pfMode === 'tipo' ? 'tipi' : 'strumenti'}</span></div></div>
       <div class="legend">${items.map(g => `<div class="row"><span class="dot" style="background:${g.color}"></span><span class="grow truncate" style="font-weight:700">${esc(g.label)}</span><span class="muted small">${Math.round(g.value / T.value * 100)}%</span></div>`).join('')}</div></div></div>` : ''}
-    ${balanceCard()}
-    <div class="col" style="gap:12px"><span class="section-title">Strumenti</span><div class="list">${open.map(pfHoldingRow).join('') || '<div class="empty">Nessuna posizione aperta.</div>'}</div></div>
     ${closed.length ? `<div class="col" style="gap:12px"><span class="section-title">Chiusi</span><div class="list">${closed.map(pfHoldingRow).join('')}</div></div>` : ''}`
     : `<div class="empty">Nessuno strumento ancora.<br>Tocca + per aggiungere un ETF, un'azione o una cripto cercandolo per ISIN o ticker, poi registra gli acquisti.</div>`}`;
 }
-viewPortfolio.after = () => { if (!pfAutoDone) { pfAutoDone = true; const stale = Date.now() - Math.max(0, ...holdingsLive().map(h => h.priceAt || 0)) > 30 * 60000; if (stale) pfRefresh(true); } };
+viewPortfolio.after = () => { pfLoadHistory(); if (!pfAutoDone) { pfAutoDone = true; const stale = Date.now() - Math.max(0, ...holdingsLive().map(h => h.priceAt || 0)) > 30 * 60000; if (stale) pfRefresh(true); } };
 VIEWS.portafoglio = viewPortfolio;
 
 // ---------- Strumento: modifica e ricerca ----------
@@ -287,7 +349,11 @@ function tradeDelete() {
 // Stesse regole dell'artefatto "Allocazione Trade Republic": fascia obiettivo sull'azionario,
 // si ribilancia solo spostando gli importi dei PAC, mai vendendo.
 const assetClass = h => (h.type === 'obbligazione' ? 'bond' : h.type === 'etf' || h.type === 'azione' ? 'eq' : null);
-const balTarget = () => { const t = S.settings.target || {}; const lo = Number(t.lo) || 75, hi = Number(t.hi) || 80; return { lo: lo / 100, hi: hi / 100, mid: (lo + hi) / 200 }; };
+// Profilo di rischio → quota azionaria obiettivo. "Personalizzato" usa la fascia scritta a mano.
+const RISK = { prudente: ['Prudente', 25, 35], bilanciato: ['Bilanciato', 45, 55], dinamico: ['Dinamico', 75, 80], aggressivo: ['Aggressivo', 85, 95] };
+const riskProfile = () => (RISK[S.settings.risk] ? S.settings.risk : S.settings.risk === 'custom' || S.settings.target ? 'custom' : 'dinamico');
+const riskLabel = () => (RISK[riskProfile()] || ['Personalizzato'])[0];
+const balTarget = () => { const r = RISK[riskProfile()], t = S.settings.target || {}; const lo = r ? r[1] : Number(t.lo) || 75, hi = r ? r[2] : Number(t.hi) || 80; return { lo: lo / 100, hi: hi / 100, mid: (lo + hi) / 200 }; };
 // Importo mensile del PAC collegato a ogni strumento (pagamenti pianificati attivi).
 function pacOf(hid) { return plannedAll().filter(p => p.active !== false && p.holdingId === hid).reduce((a, p) => a + plannedMonthly(p), 0); }
 function balanceData() {
@@ -356,7 +422,8 @@ function balanceCard() {
 
 function portfolioSettings() {
   return `<div class="field"><label>Proxy per i prezzi (facoltativo)</label><input value="${esc(S.settings.proxyUrl || '')}" onchange="S.settings.proxyUrl=this.value.trim();save(false)" placeholder="https://tuo-worker.workers.dev/?url="><span class="hint">I prezzi di ETF e azioni vengono da Yahoo Finance, che il browser non può interrogare direttamente. Senza proxy uso un servizio pubblico che a volte non risponde: in quel caso inserisci il prezzo a mano. Per la massima affidabilità puoi creare un tuo proxy gratuito su Cloudflare con il codice nel file proxy-worker.js del progetto.</span></div>
-      <div class="field"><label>Fascia obiettivo azionario (%)</label><div class="row" style="gap:12px"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).lo || 75}" onchange="S.settings.target={...(S.settings.target||{}),lo:+this.value};save(false)" aria-label="Minimo"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).hi || 80}" onchange="S.settings.target={...(S.settings.target||{}),hi:+this.value};save(false)" aria-label="Massimo"></div><span class="hint">Usata dalla sezione Bilanciamento del Portafoglio. Il resto è obbligazionario.</span></div>
+      <div class="field"><label>Profilo di rischio</label><select onchange="S.settings.risk=this.value;save();route()">${Object.entries(RISK).map(([k, r]) => `<option value="${k}" ${riskProfile() === k ? 'selected' : ''}>${r[0]} · azioni ${r[1]}–${r[2]}%</option>`).join('')}<option value="custom" ${riskProfile() === 'custom' ? 'selected' : ''}>Personalizzato</option></select></div>
+      ${riskProfile() === 'custom' ? `<div class="field"><label>Fascia azioni personalizzata (%)</label><div class="row" style="gap:12px"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).lo || 75}" onchange="S.settings.target={...(S.settings.target||{}),lo:+this.value};save(false)" aria-label="Minimo"><input type="number" min="0" max="100" inputmode="numeric" value="${(S.settings.target || {}).hi || 80}" onchange="S.settings.target={...(S.settings.target||{}),hi:+this.value};save(false)" aria-label="Massimo"></div></div>` : ''}
       <button class="btn sm" onclick="pfRefresh()">${svg('repeat', 18)} Aggiorna i prezzi ora</button>
       <button class="btn sm" onclick="go('#portafoglio')">${svg('trend', 18)} Apri il portafoglio</button>`;
 }

@@ -31,7 +31,7 @@ function exMatch(e, [a, b], typeOverride) {
   if (EX.group && groupOf(c) !== EX.group) return false;
   if (EX.cat && e.cat !== EX.cat) return false;
   if (EX.account && (e.account || '') !== EX.account) return false;
-  if (EX.q && !`${e.note || ''} ${c.name}`.toLowerCase().includes(EX.q.toLowerCase())) return false;
+  if (EX.q && !`${e.note || ''} ${c.name} ${(e.tags || []).map(t => '#' + t).join(' ')}`.toLowerCase().includes(EX.q.toLowerCase())) return false;
   return true;
 }
 function exSet(k, v) { EX[k] = v; if (k === 'group') EX.cat = ''; route(); }
@@ -89,6 +89,8 @@ function exSpese() {
         ${kpi(fmtMoney(tot / Math.max(months, 1)), 'al mese')}${kpi(fmtMoney(tot / days), 'al giorno')}${kpi(String(main.length), 'movimenti')}${kpi(fmtMoney(main.length ? tot / main.length : 0), 'importo medio')}
       </div></div>
       <div class="card col ex-wide" style="gap:12px"><div class="row between"><span style="font-weight:800">Andamento</span>${lr ? `<span class="small" style="font-weight:700;color:${slopeColor(lr.b, tot / pts.length)}">tendenza ${trendWord(lr.b, tot / pts.length, days <= 62 ? '/giorno' : '/mese')}</span>` : ''}</div>${chart || '<span class="muted small">Nessun dato nel periodo.</span>'}</div>
+      ${(() => { const gs = groups.map(({ g, cs }) => ({ g, v: cs.reduce((x, id) => x + byCat[id], 0), c: cs.reduce((x, id) => x + (byCatC[id] || 0), 0) })).sort((a, b) => b.v - a.v), mx = Math.max(...gs.map(x => x.v), 1);
+        return gs.length ? `<div class="card col ex-wide" style="gap:10px"><span style="font-weight:800">Dove vanno i soldi</span>${gs.map(x => `<button class="col" style="gap:4px;text-align:left" onclick="exSet('group','${x.g.id === 'inc' ? '' : x.g.id}')"><div class="row between small"><span class="row" style="gap:8px"><span class="dot" style="background:${x.g.color}"></span>${x.g.name}</span><span class="num"><b>${fmtMoney(x.v, false)}</b> <span class="muted">${tot ? Math.round(x.v / tot * 100) : 0}%</span>${CR ? ' ' + deltaTxt(x.v, x.c) : ''}</span></div><div style="height:8px;border-radius:4px;background:var(--surface-2)"><div style="width:${x.v / mx * 100}%;height:100%;border-radius:4px;background:${x.g.color}"></div></div></button>`).join('')}</div>` : ''; })()}
       <div class="card col" style="gap:10px"><span style="font-weight:800">Per gruppo e categoria</span>
         <div class="scroll-x"><table class="tbl"><thead><tr><th>Voce</th><th>€</th><th>%</th><th>Mov.</th><th>${CR ? 'Δ' : ''}</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5" class="muted">Nessun movimento.</td></tr>'}</tbody></table></div>
         <span class="hint">Tocca un gruppo o una categoria per filtrare.</span></div>
@@ -208,46 +210,60 @@ const CONTAINS = { 'msci-world': ['sp500', 'msci-europe', 'japan-imi', 'world-ex
 // "il 61%" ma "l'11%", "l'1%", "l'80%".
 const artPct = v => { const n = Math.round(v); return (/^(1|11|8\d?)$/.test(String(n)) ? "l'" : 'il ') + n + '%'; };
 const overlaps = (a, b) => a === b || (CONTAINS[a] || []).includes(b) || (CONTAINS[b] || []).includes(a);
-function exDiversificazione() {
+// Consigli brevi: A) geografia e tipo di aziende, B) profilo di rischio. Solo numeri e azioni.
+function pfLook() {
   const rows = holdingsLive().map(h => ({ h, v: position(h).value, kb: ETF_KB[h.isin] })).filter(r => r.v > 0);
-  if (!rows.length) return '<div class="empty">Aggiungi i tuoi strumenti in Portafoglio per vedere la diversificazione.</div>';
-  const eq = rows.filter(r => r.kb && r.kb.cls === 'eq'), eqTot = eq.reduce((a, r) => a + r.v, 0), tot = rows.reduce((a, r) => a + r.v, 0), unknown = rows.filter(r => !r.kb);
+  const eq = rows.filter(r => r.kb && r.kb.cls === 'eq'), eqTot = eq.reduce((a, r) => a + r.v, 0);
   const reg = {}; Object.keys(REGIONS).forEach(k => { reg[k] = eqTot ? eq.reduce((a, r) => a + r.v * (r.kb.reg[k] || 0) / 100, 0) / eqTot * 100 : 0; });
-  const cls = {}; rows.forEach(r => { const c = r.kb ? r.kb.cls : 'altro'; cls[c] = (cls[c] || 0) + r.v; });
-  const CLS = { eq: 'Azioni', bond: 'Obbligazioni', gold: 'Oro', altro: 'Non classificati' };
-  // Sovrapposizioni tra gli ETF che hai.
-  const ov = []; rows.forEach((a, i) => rows.slice(i + 1).forEach(b => { if (a.kb && b.kb && overlaps(a.kb.idx, b.kb.idx)) ov.push([a, b]); }));
-  const held = rows.filter(r => r.kb).map(r => r.kb.idx), terW = rows.filter(r => r.kb).reduce((a, r) => a + r.v * r.kb.ter, 0) / (rows.filter(r => r.kb).reduce((a, r) => a + r.v, 0) || 1);
-  // Suggerimenti: aree sottopesate di oltre 5 punti rispetto al mercato globale, con ETF che non si sovrappongono a quelli che hai.
-  const tips = [];
+  return { rows, eq, eqTot, reg, held: rows.filter(r => r.kb).map(r => r.kb.idx) };
+}
+function pfAdvice() {
+  const L = pfLook(); if (!L.rows.length) return null;
+  const geo = [], risk = [], p1 = v => Math.round(v) + '%', name = r => esc(r.h.name.replace(/\s*\((Acc|Dist)\)/, ''));
+  // A) Geografia e tipo di aziende
   Object.keys(REGIONS).forEach(k => {
-    const d = reg[k] - MARKET[k]; if (d >= -5) return;
-    const mine = eq.find(r => (r.kb.reg[k] || 0) >= 90);
-    if (mine) { tips.push(`<b>${REGIONS[k]}</b> pesa ${artPct(reg[k])} contro ${artPct(MARKET[k])} del mercato: hai già <b>${esc(mine.h.name)}</b>, basta aumentarne il PAC.`); return; }
-    const alt = Object.entries(ETF_KB).filter(([, e]) => e.cls === 'eq' && (e.reg[k] || 0) >= 50 && !held.some(i => overlaps(i, e.idx)));
-    if (alt.length) tips.push(`<b>${REGIONS[k]}</b> pesa ${artPct(reg[k])} contro ${artPct(MARKET[k])} del mercato. Alternative che non si sovrappongono: ${alt.map(([isin, e]) => `${esc(e.name)} (<span class="num">${isin}</span>, TER ${e.ter.toString().replace('.', ',')}%)`).join('; ')}.`);
+    const d = L.reg[k] - MARKET[k];
+    if (d < -5) {
+      const mine = L.eq.find(r => (r.kb.reg[k] || 0) >= 90);
+      const alt = Object.entries(ETF_KB).find(([, e]) => e.cls === 'eq' && (e.reg[k] || 0) >= 90 && !L.held.some(i => overlaps(i, e.idx)));
+      geo.push(`${REGIONS[k]} ${p1(L.reg[k])} → ${p1(MARKET[k])}: ${mine ? `aumenta il PAC ${name(mine)}` : alt ? `aggiungi ${esc(alt[1].name)} <span class="num">(${alt[0]})</span>` : 'aumenta l\'esposizione'}`);
+    } else if (d > 8) geo.push(`${REGIONS[k]} ${p1(L.reg[k])} → ${p1(MARKET[k])}: nuovi versamenti fuori ${REGIONS[k]}`);
   });
-  Object.keys(REGIONS).forEach(k => { const d = reg[k] - MARKET[k]; if (d > 8) tips.push(`<b>${REGIONS[k]}</b> pesa ${artPct(reg[k])}, ${d.toFixed(0)} punti sopra il mercato globale: per ridurre il peso indirizza i nuovi versamenti altrove, senza vendere.`); });
-  if (!held.some(i => ['world-small', 'acwi-imi'].includes(i))) tips.push(`Non hai <b>small cap</b>: sono aziende più piccole, poco presenti negli indici principali. Un ETF che non si sovrappone: iShares MSCI World Small Cap (<span class="num">IE00BF4RFH31</span>, TER 0,35%).`);
-  if (held.includes('global-govt') && !held.some(i => ['euro-infl', 'euro-govt'].includes(i))) tips.push(`Sul lato obbligazioni hai solo titoli di Stato globali coperti dal cambio. Per diversificare: iShares € Inflation Linked Govt Bond (<span class="num">IE00B0M62X26</span>), che protegge dall'inflazione europea, o una quota di oro come Invesco Physical Gold (<span class="num">IE00B579F325</span>).`);
-  const regRows = Object.keys(REGIONS).map(k => `<tr><td>${REGIONS[k]}</td><td class="num">${reg[k].toFixed(1).replace('.', ',')}%</td><td class="num muted">${MARKET[k]}%</td><td class="num" style="color:${Math.abs(reg[k] - MARKET[k]) <= 5 ? 'var(--muted)' : reg[k] > MARKET[k] ? 'var(--warn)' : 'var(--accent)'}">${reg[k] - MARKET[k] >= 0 ? '+' : ''}${(reg[k] - MARKET[k]).toFixed(0)}</td></tr>`).join('');
+  const rs = L.rows.filter(r => r.kb);
+  rs.forEach((a, i) => rs.slice(i + 1).forEach(b => { if (overlaps(a.kb.idx, b.kb.idx)) { const small = (CONTAINS[a.kb.idx] || []).includes(b.kb.idx) ? b : a, big = small === a ? b : a; geo.push(`${name(small)} è già dentro ${name(big)}: ${pacOf(small.h.id) ? 'sospendi il suo PAC' : 'non aggiungerne'}`); } }));
+  if (!L.held.some(i => ['world-small', 'acwi-imi'].includes(i))) geo.push(`Small cap 0% → ~10%: iShares MSCI World Small Cap <span class="num">(IE00BF4RFH31)</span>`);
+  // B) Profilo di rischio
+  const B = balanceData(), t = balTarget();
+  if (B.tot) {
+    const inBand = B.eqPct >= t.lo && B.eqPct <= t.hi, M = B.M;
+    risk.push(`Profilo ${riskLabel()}: azioni ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%, ora <b>${(B.eqPct * 100).toFixed(1).replace('.', ',')}%</b>`);
+    if (M > 0 && !inBand) {
+      const toBond = Math.max(0, Math.min(M, B.eq + M - t.mid * (B.tot + M))), split = [...balSplit(B, 'eq', M - toBond), ...balSplit(B, 'bond', toBond)].filter(x => Math.round(x.amount) > 0);
+      risk.push(`Prossimo PAC${B.next ? ' (' + dayFmt(B.next) + ')' : ''}: ${split.map(x => `${name(x.r)} ${fmtMoney(Math.round(x.amount)).replace(',00', '')}`).join(' · ')}`);
+    } else if (M > 0) risk.push('In fascia: mantieni i PAC come sono');
+    if (M > 0) risk.push(`A regime ogni mese: ${[...balSplit(B, 'eq', M * t.mid), ...balSplit(B, 'bond', M * (1 - t.mid))].map(x => `${name(x.r)} ${fmtMoney(Math.round(x.amount)).replace(',00', '')}`).join(' · ')}`);
+  }
+  return { geo, risk, L, B };
+}
+function exDiversificazione() {
+  const A = pfAdvice(); if (!A) return '<div class="empty">Aggiungi i tuoi strumenti in Portafoglio per vedere i consigli.</div>';
+  const { L } = A, bar = (v, m, c) => `<div style="position:relative;height:8px;border-radius:4px;background:var(--surface-2)"><div style="width:${Math.min(100, v)}%;height:100%;border-radius:4px;background:${c}"></div><div style="position:absolute;top:-3px;bottom:-3px;left:${m}%;width:2px;background:var(--text);opacity:.6"></div></div>`;
+  const B = A.B, t = balTarget();
   return `
     <div class="ex-grid">
-      <div class="card col" style="gap:14px"><span style="font-weight:800">Azioni per area geografica</span>
-        <div class="row" style="gap:18px"><div class="donut-wrap">${donutSvg(Object.keys(REGIONS).map((k, i) => ({ value: reg[k], color: PALETTE[i] })))}<div class="donut-center"><span class="small muted">azioni</span><span class="num" style="font-weight:700">${fmtMoney(eqTot).replace(/,\d\d$/, '')}</span></div></div>
-        <div class="legend">${Object.keys(REGIONS).map((k, i) => `<div class="row"><span class="dot" style="background:${PALETTE[i]}"></span><span class="grow">${REGIONS[k]}</span><span class="muted small">${reg[k].toFixed(0)}%</span></div>`).join('')}</div></div>
-        <table class="tbl"><thead><tr><th>Area</th><th>Tu</th><th>Mercato</th><th>Δ punti</th></tr></thead><tbody>${regRows}</tbody></table>
-        <span class="hint">Scomposizione "look-through": ogni ETF diviso per i paesi che contiene. Mercato = azionario globale (MSCI ACWI IMI). Pesi indicativi.</span></div>
-      <div class="card col" style="gap:12px"><span style="font-weight:800">Composizione</span>
-        <table class="tbl"><tbody>${Object.entries(cls).map(([c, v]) => `<tr><td>${CLS[c]}</td><td class="num">${fmtMoney(v, false)}</td><td class="num muted">${Math.round(v / tot * 100)}%</td></tr>`).join('')}</tbody></table>
-        <span class="small muted">Costo medio ponderato (TER): <b class="num">${terW.toFixed(2).replace('.', ',')}%</b> all'anno.</span>
-        ${unknown.length ? `<span class="hint">Non classificati: ${unknown.map(r => esc(r.h.name)).join(', ')}. Aggiungo il loro ISIN alla base dati se mi dici quali sono.</span>` : ''}</div>
-      <div class="card col ex-wide" style="gap:10px"><span style="font-weight:800">Sovrapposizioni</span>
-        ${ov.length ? ov.map(([a, b]) => `<span>⚠ <b>${esc(a.h.name)}</b> e <b>${esc(b.h.name)}</b> si sovrappongono: ${a.kb.idx === b.kb.idx ? 'replicano lo stesso indice.' : 'uno è già quasi tutto contenuto nell\'altro, quindi averli entrambi aumenta solo il peso di quella parte.'}</span>`).join('') : '<span class="muted">Nessuna sovrapposizione tra i tuoi ETF.</span>'}</div>
-      <div class="card col ex-wide" style="gap:10px"><span style="font-weight:800">Idee per diversificare</span>
-        ${tips.length ? tips.map(t => `<span style="line-height:1.5">• ${t}</span>`).join('') : '<span class="muted">La distribuzione è già vicina al mercato globale.</span>'}
-        <span class="hint">Idee generali basate su pesi indicativi, non consulenza finanziaria: verifica sempre KID, costi e tasse prima di investire.</span></div>
-    </div>`;
+      <div class="card col" style="gap:12px"><span style="font-weight:800">A · Geografia e tipo di aziende</span>
+        ${Object.keys(REGIONS).map((k, i) => `<div class="col" style="gap:4px"><div class="row between small"><span>${REGIONS[k]}</span><span class="num"><b>${Math.round(L.reg[k])}%</b> <span class="muted">/ ${MARKET[k]}%</span></span></div>${bar(L.reg[k], MARKET[k], PALETTE[i])}</div>`).join('')}
+        <span class="small muted">Barra = tu · linea = mercato globale</span>
+        ${A.geo.length ? A.geo.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('') : '<span class="small">• In linea con il mercato globale</span>'}
+      </div>
+      <div class="card col" style="gap:12px"><span style="font-weight:800">B · Profilo di rischio</span>
+        ${B.tot ? `<div class="col" style="gap:4px"><div class="row between small"><span>Azioni</span><span class="num"><b>${Math.round(B.eqPct * 100)}%</b> <span class="muted">/ ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%</span></span></div>
+          <div style="position:relative;height:8px;border-radius:4px;background:var(--surface-2)"><div style="position:absolute;left:${t.lo * 100}%;width:${(t.hi - t.lo) * 100}%;top:0;bottom:0;background:${hexA('#6EE7B7', .35)}"></div><div style="width:${B.eqPct * 100}%;height:100%;border-radius:4px;background:var(--accent);opacity:.85"></div></div></div>` : ''}
+        ${A.risk.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('')}
+        <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(RISK).map(([k, r]) => `<button class="chip ${riskProfile() === k ? 'on' : ''}" style="height:32px" onclick="S.settings.risk='${k}';save();route()">${r[0]} ${r[1]}–${r[2]}%</button>`).join('')}</div>
+      </div>
+    </div>
+    <span class="hint">Pesi indicativi, non consulenza finanziaria.</span>`;
 }
 
 // ---------- Schermata ----------

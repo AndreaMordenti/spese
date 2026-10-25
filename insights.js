@@ -151,17 +151,18 @@ function diaryHistory(habits) {
   // Ultime 12 settimane: media a settimana e quante settimane con almeno una volta.
   const tw = weekStart(today), weeks = Array.from({ length: 12 }, (_, i) => addDays(tw, -7 * (i + 1))), perWeek = weeks.map(w => ds.filter(d => d >= w && d < addDays(w, 7)).length);
   const avgW = perWeek.reduce((a, b) => a + b, 0) / 12, activeW = perWeek.filter(Boolean).length;
-  // Curiosità
-  const byMonth = {}; ds.forEach(d => { byMonth[monthKey(d)] = (byMonth[monthKey(d)] || 0) + 1; });
-  const [bestM, bestN] = Object.entries(byMonth).sort((a, b) => b[1] - a[1])[0];
-  let gap = 0, gapFrom = ds[0]; for (let i = 1; i < ds.length; i++) { const g = daysBetween(ds[i - 1], ds[i]) - 1; if (g > gap) { gap = g; gapFrom = ds[i - 1]; } }
-  const byWeek = {}; ds.forEach(d => { const w = weekStart(d); byWeek[w] = (byWeek[w] || 0) + 1; }); const bestWeek = Math.max(...Object.values(byWeek));
-  const wd = [0, 0, 0, 0, 0, 0, 0]; ds.forEach(d => { wd[(new Date(d + 'T12:00:00').getDay() + 6) % 7]++; }); const favDay = WEEKDAYS[wd.indexOf(Math.max(...wd))];
-  const since = daysBetween(ds[ds.length - 1], today), every = span / ds.length;
+  // Curiosità sugli ultimi 12 mesi: i dati più vecchi e sporadici (es. il 2024) falserebbero medie e pause.
+  const from12 = addDays(today, -365), rs = ds.filter(d => d >= from12), rsSpan = daysBetween(rs[0] || today, today) + 1;
+  const byMonth = {}; rs.forEach(d => { byMonth[monthKey(d)] = (byMonth[monthKey(d)] || 0) + 1; });
+  const [bestM, bestN] = Object.entries(byMonth).sort((a, b) => b[1] - a[1])[0] || ['', 0];
+  let gap = 0, gapFrom = rs[0]; for (let i = 1; i < rs.length; i++) { const g = daysBetween(rs[i - 1], rs[i]) - 1; if (g > gap) { gap = g; gapFrom = rs[i - 1]; } }
+  const byWeek = {}; rs.forEach(d => { const w = weekStart(d); byWeek[w] = (byWeek[w] || 0) + 1; }); const bestWeek = Math.max(0, ...Object.values(byWeek));
+  const wd = [0, 0, 0, 0, 0, 0, 0]; rs.forEach(d => { wd[(new Date(d + 'T12:00:00').getDay() + 6) % 7]++; }); const favDay = WEEKDAYS[wd.indexOf(Math.max(...wd))];
+  const since = daysBetween(ds[ds.length - 1], today), every = rsSpan / Math.max(rs.length, 1);
   const facts = [
-    `In media una volta ogni <b>${every < 1.05 ? 'giorno' : every.toFixed(1).replace('.', ',') + ' giorni'}</b> da quando hai iniziato, il ${longDate(ds[0])}.`,
-    `Il mese migliore è stato <b>${monthLabel(bestM)}</b>, con ${bestN} ${bestN === 1 ? 'giorno' : 'giorni'}.`,
-    `La settimana record conta <b>${bestWeek}</b> ${bestWeek === 1 ? 'giorno' : 'giorni'}; il giorno che preferisci è il <b>${favDay}</b>.`,
+    rs.length ? `Negli ultimi 12 mesi: in media una volta ogni <b>${every < 1.05 ? 'giorno' : every.toFixed(1).replace('.', ',') + ' giorni'}</b> (${rs.length} volte).` : `Negli ultimi 12 mesi non l'hai mai fatto; la prima volta è stata il ${longDate(ds[0])}.`,
+    bestM ? `Il mese migliore è stato <b>${monthLabel(bestM)}</b>, con ${bestN} ${bestN === 1 ? 'giorno' : 'giorni'}.` : null,
+    !bestWeek ? null : `La settimana record conta <b>${bestWeek}</b> ${bestWeek === 1 ? 'giorno' : 'giorni'}; il giorno che preferisci è il <b>${favDay}</b>.`,
     gap > 0 ? `La pausa più lunga è stata di <b>${gap} giorni</b>, dopo il ${longDate(gapFrom)}.` : null,
     since === 0 ? 'Fatto anche oggi.' : since === 1 ? "L'ultima volta è stata ieri." : `L'ultima volta è stata <b>${since} giorni fa</b>, il ${longDate(ds[ds.length - 1])}.`,
     `Nelle ultime 12 settimane l'hai fatto in ${activeW} settimane su 12.`,
