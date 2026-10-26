@@ -172,14 +172,16 @@ function diaryHistory(habits) {
   return `${chips}
     <div class="card col" style="gap:14px">
       <div class="row between"><span class="row" style="gap:10px;font-weight:800"><span style="color:${h.color}">${svg(h.icon, 20)}</span>${esc(h.name)}</span><button class="chip" style="height:32px" onclick="editHabit('${h.id}')" aria-label="Modifica attività">${svg('pen', 16)}</button></div>
+      <div class="col" style="gap:6px"><span class="small muted">Ultimo anno</span>${cal}</div>
+      <details><summary style="font-weight:800">Analisi</summary><div class="col" style="gap:14px;padding-top:8px">
       <div class="ex-kpis">
         <div class="stat"><span class="v num">${st.total}</span><span class="small muted">giorni in totale</span></div>
         <div class="stat"><span class="v num">${st.month}</span><span class="small muted">questo mese</span></div>
         <div class="stat"><span class="v num">${avgW.toFixed(1).replace('.', ',')}</span><span class="small muted">a settimana (12 sett.)</span></div>
         <div class="stat"><span class="v num">${s.cur}<span class="small muted"> / ${s.best}</span></span><span class="small muted">serie attuale / record</span></div>
       </div>
-      <div class="col" style="gap:6px"><span class="small muted">Ultimo anno</span>${cal}</div>
-      <div class="col" style="gap:8px"><span style="font-weight:800">Curiosità</span>${facts.map(f => `<span class="small" style="line-height:1.5">• ${f}</span>`).join('')}</div>
+      ${facts.map(f => `<span class="small" style="line-height:1.5">• ${f}</span>`).join('')}
       ${habitInsights(h, st)}
+      </div></details>
     </div>`;
 }

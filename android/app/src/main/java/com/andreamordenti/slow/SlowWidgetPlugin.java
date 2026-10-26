@@ -147,7 +147,9 @@ public class SlowWidgetPlugin extends Plugin {
             android.app.usage.UsageEvents ev = um.queryEvents(start, end);
             android.app.usage.UsageEvents.Event e = new android.app.usage.UsageEvents.Event();
             java.util.Map<String, long[]> apps = new java.util.HashMap<>(); // [ms, aperture]
-            String fg = null; long fgAt = 0, first = 0, last = 0, lateMs = 0; int unlocks = 0;
+            // Un'app conta come "aperta" solo se arrivi da un'altra app o dopo 30 secondi lontano:
+            // i passaggi tra schermate della stessa app (chat, foto, tendina) non sono nuove aperture.
+            String fg = null, prevPk = null; long fgAt = 0, prevEnd = 0, first = 0, last = 0, lateMs = 0; int unlocks = 0;
             while (ev.hasNextEvent()) {
                 ev.getNextEvent(e);
                 int t = e.getEventType(); long ts = e.getTimeStamp(); String pk = e.getPackageName();
@@ -155,9 +157,10 @@ public class SlowWidgetPlugin extends Plugin {
                 else if (t == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
                     if (skip.contains(pk)) continue;
                     if (fg != null && !fg.equals(pk)) { long dur = ts - fgAt; apps.computeIfAbsent(fg, k -> new long[2])[0] += dur; if (fgAt < late) lateMs += Math.min(ts, late) - fgAt; }
-                    if (fg == null || !fg.equals(pk)) { apps.computeIfAbsent(pk, k -> new long[2])[1]++; fgAt = ts; fg = pk; }
+                    if (fg != null && !fg.equals(pk)) { prevPk = fg; prevEnd = ts; }
+                    if (fg == null || !fg.equals(pk)) { if (!(pk.equals(prevPk) && ts - prevEnd < 30_000)) apps.computeIfAbsent(pk, k -> new long[2])[1]++; fgAt = ts; fg = pk; }
                 } else if ((t == android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED && pk.equals(fg)) || t == 16 /* SCREEN_NON_INTERACTIVE */) {
-                    if (fg != null) { apps.computeIfAbsent(fg, k -> new long[2])[0] += ts - fgAt; if (fgAt < late) lateMs += Math.min(ts, late) - fgAt; last = ts; fg = null; }
+                    if (fg != null) { apps.computeIfAbsent(fg, k -> new long[2])[0] += ts - fgAt; if (fgAt < late) lateMs += Math.min(ts, late) - fgAt; last = ts; prevPk = fg; prevEnd = ts; fg = null; }
                 }
             }
             if (fg != null) { apps.computeIfAbsent(fg, k -> new long[2])[0] += end - fgAt; last = end; }

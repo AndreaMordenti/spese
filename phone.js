@@ -14,7 +14,7 @@ async function phonePull() {
   const W = Native.plugin('SlowWidget'); if (!W || DEMO) return;
   try { phoneAccess = (await W.usageAccess()).granted; } catch (e) { phoneAccess = false; }
   if (!phoneAccess) return;
-  let items = []; try { items = (await W.usageDays({ days: phoneDays().length ? 3 : 30 })).items || []; } catch (e) { return; }
+  let items = []; try { items = (await W.usageDays({ days: phoneDays().length && localStorage.getItem('slow.usageV') === '2' ? 3 : 30 })).items || []; } catch (e) { return; }
   let changed = 0; const now = Date.now();
   items.forEach(it => {
     const cur = (S.phone || []).find(x => x.id === it.date);
@@ -23,6 +23,7 @@ async function phonePull() {
     if (cur) Object.assign(cur, rec, { updatedAt: now, deleted: false }); else S.phone.push({ ...rec, updatedAt: now });
     changed++;
   });
+  try { localStorage.setItem('slow.usageV', '2'); } catch (e) { /* niente */ }
   if (changed) { save(); if (location.hash === '#diario') route(); }
 }
 async function phoneEnable() {
@@ -97,8 +98,11 @@ function phoneFacts(days, habits) {
 }
 
 // ---------- Sezione del Diario ----------
+// Giorno mostrato: si sceglie con le frecce o toccando una barra; di base l'ultimo disponibile.
+let phoneDate = null;
+function phoneGo(step) { const ds = phoneDays().map(x => x.date), i = ds.indexOf(phoneDate || ds[ds.length - 1]); phoneDate = ds[Math.max(0, Math.min(ds.length - 1, i + step))]; route(); }
 function phoneSection(habits) {
-  const days = phoneDays(), d = days.filter(x => x.date <= diaryDate).pop();
+  const days = phoneDays(), d = days.filter(x => x.date <= (phoneDate || todayISO())).pop();
   if (!days.length && !Native.on) return ''; // sul web compare solo se l'app Android ha già mandato dati
   let body;
   if (!days.length) {
@@ -107,10 +111,14 @@ function phoneSection(habits) {
       <button class="btn sm primary" onclick="phoneEnable()">Consenti l'accesso ai dati di utilizzo</button>`;
   } else {
     const isToday = d && d.date === todayISO(), gap = d ? Math.round(d.screenMin / Math.max(d.unlocks, 1)) : 0;
-    const w7 = days.filter(x => x.date > addDays(diaryDate, -7) && x.date <= diaryDate), maxU = Math.max(1, ...w7.map(x => x.unlocks));
+    const iD = d ? days.indexOf(d) : 0, w7 = days.slice(Math.max(0, iD - 3), Math.max(0, iD - 3) + 7), maxU = Math.max(1, ...w7.map(x => x.unlocks));
     const facts = phoneFacts(days, habits);
     body = !d ? '<div class="empty">Nessun dato per questo giorno.</div>' : `
-      <span class="small muted">${isToday ? 'Oggi, finora' : fmtDate(d.date)}</span>
+      <div class="row between">
+        <button class="chip" onclick="phoneGo(-1)" aria-label="Giorno precedente" ${iD === 0 ? 'disabled style="opacity:.4"' : ''}>${svg('back', 14, 2.5)}</button>
+        <span style="font-weight:700">${isToday ? 'Oggi, finora' : fmtLong(d.date, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        <button class="chip" onclick="phoneGo(1)" aria-label="Giorno successivo" ${iD === days.length - 1 ? 'disabled style="opacity:.4"' : ''}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div>
       <div class="ex-kpis">
         <div class="stat"><span class="v num">${fmtMin(d.screenMin)}</span><span class="small muted">di schermo</span></div>
         <div class="stat"><span class="v num" style="color:${d.unlocks > 80 ? 'var(--warn)' : 'inherit'}">${d.unlocks}</span><span class="small muted">sblocchi</span></div>
@@ -118,9 +126,9 @@ function phoneSection(habits) {
         <div class="stat"><span class="v num">${d.first || '–'}<span class="small muted"> / ${d.last || '–'}</span></span><span class="small muted">primo sblocco / ultimo uso</span></div>
       </div>
       ${d.lateMin ? `<span class="small" style="color:var(--warn)">${d.lateMin} min di telefono tra mezzanotte e le 5.</span>` : ''}
-      <div class="col" style="gap:6px"><span class="small muted">Sblocchi, ultimi 7 giorni</span><div class="bars" style="height:72px;gap:6px">${w7.map(x => `<div><span class="small muted num">${x.unlocks}</span><div class="b" style="height:${Math.max(2, Math.round(x.unlocks / maxU * 100))}%;background:${x.date === d.date ? 'var(--accent)' : 'var(--surface-3)'}"></div><span class="small muted">${WEEKDAYS[(new Date(x.date + 'T12:00:00').getDay() + 6) % 7].slice(0, 1).toUpperCase()}</span></div>`).join('')}</div></div>
-      ${(d.apps || []).length ? `<div class="col" style="gap:4px"><span class="small muted">App più usate</span>${d.apps.slice(0, 3).map(a => `<div class="row between small"><span class="truncate">${esc(a.n)}</span><span class="num muted">${fmtMin(a.min)} · ${a.opens} aperture</span></div>`).join('')}</div>` : ''}
-      ${facts.length ? `<div class="col" style="gap:8px"><span style="font-weight:800">Curiosità · ultimi 30 giorni</span>${facts.map(f => `<span class="small" style="line-height:1.5">• ${f}</span>`).join('')}</div>` : ''}`;
+      <div class="col" style="gap:6px"><span class="small muted">Sblocchi · tocca un giorno</span><div class="bars" style="height:72px;gap:6px">${w7.map(x => `<div style="cursor:pointer" onclick="phoneDate='${x.date}';route()"><span class="small muted num">${x.unlocks}</span><div class="b" style="height:${Math.max(2, Math.round(x.unlocks / maxU * 100))}%;background:${x.date === d.date ? 'var(--accent)' : 'var(--surface-3)'}"></div><span class="small muted">${WEEKDAYS[(new Date(x.date + 'T12:00:00').getDay() + 6) % 7].slice(0, 1).toUpperCase()}${Number(x.date.slice(8))}</span></div>`).join('')}</div></div>
+      ${(d.apps || []).length ? `<div class="col" style="gap:4px"><span class="small muted">App più usate · tempo e volte che l'hai aperta</span>${d.apps.slice(0, 3).map(a => `<div class="row between small"><span class="truncate">${esc(a.n)}</span><span class="num muted">${fmtMin(a.min)} · ${a.opens} aperture</span></div>`).join('')}</div>` : ''}
+      ${facts.length ? `<details><summary style="font-weight:800">Analisi · ultimi 30 giorni</summary><div class="col" style="gap:8px;padding-top:8px">${facts.map(f => `<span class="small" style="line-height:1.5">• ${f}</span>`).join('')}</div></details>` : ''}`;
   }
   return `<div class="col" style="gap:10px"><span class="section-title">Telefono</span>
     <div class="card col" style="gap:12px">${body}</div>
