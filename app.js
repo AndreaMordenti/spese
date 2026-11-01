@@ -167,8 +167,10 @@ function habitIconFor(name) {
 function applyTheme() {
   let t = S.settings.theme;
   if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'minimal' : 'dark';
-  document.documentElement.dataset.theme = t;
-  $('meta[name=theme-color]').setAttribute('content', t === 'minimal' ? '#F7F6F2' : '#0D0E12');
+  // Un solo stile in due versioni: chiara e scura cambiano solo la palette.
+  document.documentElement.dataset.theme = 'minimal';
+  document.documentElement.dataset.mode = t === 'minimal' ? 'light' : 'dark';
+  $('meta[name=theme-color]').setAttribute('content', t === 'minimal' ? '#F7F6F2' : '#111412');
 }
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
 
@@ -179,8 +181,11 @@ function route() {
   const h = (location.hash || '#analisi').slice(1).split('/');
   const name = VIEWS[h[0]] ? h[0] : 'analisi';
   if (name !== 'aggiungi') draft = null;
+  // Torna in alto solo cambiando schermata: filtri, toggle e chip ridisegnano la pagina restando dove sei.
+  const key = location.hash, y = window.scrollY, same = key === route.last;
   render(name, h.slice(1));
-  window.scrollTo(0, 0);
+  window.scrollTo(0, same ? y : 0);
+  route.last = key;
 }
 window.addEventListener('hashchange', route);
 function go(h) { location.hash = h; }
@@ -191,13 +196,13 @@ function render(name, args) {
   const views = VIEWS;
   document.body.classList.toggle('modal', name === 'aggiungi');
   const cols = ['home', 'analisi', 'portafoglio', 'diario', 'impostazioni'].includes(name) ? ' desk-cols' : '';
-  app.innerHTML = (DEMO ? `<button class="demo-bar" onclick="go('#impostazioni')">Modalità demo · dati di esempio, niente viene salvato</button>` : '') + `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
+  app.innerHTML = (DEMO ? `<button class="demo-bar" onclick="go('#impostazioni')">Demo · dati di esempio, non salvati</button>` : '') + `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
   renderNav(name);
   if (views[name].after) views[name].after(args);
 }
 const gearBtn = () => `<button class="chip" onclick="go('#impostazioni')" aria-label="Impostazioni">${svg('gear', 18)}</button>`;
 function renderNav(active) {
-  const items = [['analisi', 'Analisi', 'chart'], ['home', 'Spese', 'home'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary']];
+  const items = [['home', 'Spese', 'home'], ['analisi', 'Analisi', 'chart'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary']];
   // Su computer la stessa barra diventa una colonna laterale: marchio in alto e Impostazioni in fondo (solo desktop).
   $('#nav').innerHTML = `<div class="brand desk-only"><img src="icon-192.png" alt="">Slow</div>` + items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}<span class="fab-label">Nuovo movimento</span></a>`
@@ -268,7 +273,7 @@ function viewHome() {
     ${budgetCats.length ? `<div class="hscroll">${budgetCats.map(c => {
       const spent = sumBy(list.filter(e => e.cat === c.id)); const p = Math.round(spent / c.budget * 100);
       return `<button class="card budget-card" onclick="go('#analisi')">
-        <div class="row between"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:34px;height:34px;border-radius:12px">${svg(c.icon, 18)}</div><span class="small" style="color:${p > 100 ? 'var(--warn)' : 'var(--muted)'}">${p}%</span></div>
+        <div class="row between"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:34px;height:34px;border-radius:12px">${svg(c.icon, 18)}</div><span class="small" style="color:${p > 100 ? 'var(--warn)' : 'var(--muted)'}">${p > 100 ? `+${p - 100}% oltre` : `${p}% usato`}</span></div>
         <div class="col" style="gap:2px;text-align:left"><span style="font-size:14px;font-weight:700">${esc(c.name)}</span><span class="small muted">${fmtMoney(spent)} di ${fmtInt(c.budget)}</span></div>
         <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : c.color}"></div></div>
       </button>`; }).join('')}</div>` : ''}
@@ -555,10 +560,10 @@ function viewAnalisi() {
       <div class="row" style="gap:8px">
         <button class="chip" onclick="go('#esplora')" aria-label="Analisi dettagliata delle spese">${svg('search', 18)}</button>
         <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
-        <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
         ${gearBtn()}
       </div>
     </div>
+    <div class="segmented" style="align-self:flex-start"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
     <div class="row between">
       <button class="chip" onclick="shiftMonth(${isMonth ? -1 : -12});route()" aria-label="Periodo precedente">${svg('back', 14, 2.5)}</button>
       <span class="small muted">${isMonth ? monthLabel(currentMonth) : year}</span>
@@ -621,7 +626,7 @@ function viewDiario() {
       ${habits.length ? `<div class="list">${habits.map(h => { const st = habitStats(h), done = isDone(h.id, diaryDate); return `
         <div class="item">
           <button class="tile" style="background:${hexA(h.color, .16)};color:${h.color}" onclick="editHabit('${h.id}')" aria-label="Modifica ${esc(h.name)}">${svg(h.icon, 22)}</button>
-          <div class="col grow"><span class="truncate" style="font-weight:700">${esc(h.name)}</span><span class="small muted">Settimana ${st.week} · mese ${st.month}</span></div>
+          <div class="col grow"><span class="truncate" style="font-weight:700">${esc(h.name)}</span><span class="small muted">${st.week} questa settimana · ${st.month} questo mese</span></div>
           <button class="check ${done ? 'on' : ''}" onclick="toggleLog('${h.id}','${diaryDate}')" aria-label="${done ? 'Annulla' : 'Segna fatto'}">${svg('check', 20, 3)}</button>
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
@@ -916,6 +921,7 @@ function det(id, title, body, dflt = false) {
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
+  ['2026-10-31', ['Tema scuro con la stessa identità del chiaro (numeri con grazie, verde)', 'Portafoglio più semplice: analisi di rischio e geografia a barre, lista di ETF per bilanciare (tocca per il perché)', 'Quanto puoi investire: sempre su tutto lo storico, senza scegliere i mesi', 'Filtri e pulsanti non riportano più la pagina in alto', 'Spese prima nella barra; percentuali delle categorie spiegate']],
   ['2026-10-25', ['Diario → Telefono: tempo di schermo, sblocchi, app più usate e il test dell\'ora (nell\'app Android)', 'Consigli del portafoglio: ETF della categoria da justETF, tocca il nome per aprire la scheda', 'Portafoglio: consigli completi e quanto puoi investire, tutto in una pagina; Esplora tolta (resta l\'analisi dettagliata delle spese da Analisi)', 'Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
   ['2026-10-12', ['Server MCP: Claude e ChatGPT leggono e scrivono i dati di Slow', 'Nuovo logo: pallino con scia']],
@@ -982,7 +988,7 @@ function viewSettings() {
       }; return ''; })()}
     <span class="set-group">Profilo e dati</span>
     ${det('prof', 'Profilo e aspetto', `<div class="field"><label>Il tuo nome</label><input value="${esc(s.name)}" onchange="S.settings.name=this.value.trim();save(false)" placeholder="Come vuoi essere salutato"></div>
-    <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['dark', 'Dark'], ['minimal', 'Minimal']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro/scuro di Android: chiaro = minimal, scuro = dark.</span></div>
+    <div class="field"><label>Aspetto</label><div class="segmented" style="align-self:flex-start">${[['system', 'Sistema'], ['minimal', 'Chiaro'], ['dark', 'Scuro']].map(([v, l]) => `<button class="${s.theme === v ? 'on' : ''}" onclick="S.settings.theme='${v}';save(false);applyTheme();route()">${l}</button>`).join('')}</div><span class="hint">"Sistema" segue il tema chiaro o scuro del telefono.</span></div>
 `)}
     ${det('gdrive', 'Google Drive', gdrive)}
     ${det('data', 'Backup e importazione', data)}

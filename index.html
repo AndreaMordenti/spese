@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="it">
+<html lang="it" data-theme="minimal" data-mode="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#0D0E12">
+<meta name="theme-color" content="#111412">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="color-scheme" content="dark light">
 <title>Slow</title>
@@ -31,6 +31,13 @@
     --font: 'Instrument Sans', system-ui, sans-serif; --font-num: 'Instrument Serif', Georgia, serif;
     --r-s: 8px; --r-m: 12px; --r-l: 14px; --card-border: 1px solid var(--line);
     --fab-shadow: none; color-scheme: light;
+  }
+  /* Scuro: stessa identità del chiaro (caratteri, forme, verde) con la palette notturna. */
+  :root[data-theme="minimal"][data-mode="dark"] {
+    --bg: #111412; --surface: #111412; --surface-2: #1A1E1B; --surface-3: #262B27;
+    --text: #ECEAE4; --muted: #9A978F; --faint: #75726B; --line: #262B27;
+    --accent: #7CC4A0; --on-accent: #111412; --warn: #E39A5E; --danger: #E8808C;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }

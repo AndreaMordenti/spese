@@ -129,39 +129,28 @@ function exExportCSV() {
 const median = a => { const s = a.slice().sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0; };
 function exSavingsSet(k, v) { S.settings[k] = v; save(); route(); }
 function exRisparmio() {
-  const n = EX.months, { months } = completedMonths(n);
-  const rows = months.map(m => { const inc = sumBy(monthIncome(m.k)), exp = sumBy(monthExpenses(m.k)), inv = sumBy(monthAll(m.k).filter(e => typeOf(e) === 'expense' && catById(e.cat).excluded)); return { ...m, inc, exp, inv, margin: inc - exp, free: inc - exp - inv }; });
-  const withInc = rows.filter(r => r.inc > 0);
-  const buffer = Number(S.settings.saveBuffer ?? 20), emMonths = Number(S.settings.emergencyMonths ?? 6), liquidity = Number(S.settings.liquidity || 0), hasLiq = liquidity > 0;
-  const mInc = median(withInc.map(r => r.inc)), mExp = median(rows.map(r => r.exp)), mInv = rows.reduce((a, r) => a + r.inv, 0) / (rows.length || 1), margin = mInc - mExp;
+  // Sempre tutto lo storico: dal primo mese con movimenti all'ultimo mese chiuso (il mese in corso è parziale).
+  const all = live(S.expenses).map(e => e.date).filter(Boolean).sort(), first = all[0];
+  if (!first) return '<div class="empty">Registra entrate e spese per calcolare quanto puoi investire.</div>';
+  const thisKey = monthKey(todayISO()), months = []; let d = new Date(Number(first.slice(0, 4)), Number(first.slice(5, 7)) - 1, 1);
+  while (localISO(d).slice(0, 7) < thisKey) { months.push({ k: localISO(d).slice(0, 7) }); d = new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+  const rows = months.map(m => { const inc = sumBy(monthIncome(m.k)), exp = sumBy(monthExpenses(m.k)), inv = sumBy(monthAll(m.k).filter(e => typeOf(e) === 'expense' && catById(e.cat).excluded)); return { ...m, inc, exp, inv, free: inc - exp - inv }; });
+  if (!rows.some(r => r.inc > 0)) return `<div class="empty">Per calcolare la quota investibile servono le entrate (es. lo stipendio) registrate.</div>`;
+  const avgInc = rows.reduce((a, r) => a + r.inc, 0) / rows.length, mExp = median(rows.map(r => r.exp)), margin = avgInc - mExp;
   const pac = plannedAll().filter(p => p.active !== false && (p.holdingId || plannedExcluded(p))).reduce((a, p) => a + plannedMonthly(p), 0);
-  const investable = Math.max(0, margin * (1 - buffer / 100)), extra = investable - Math.max(pac, mInv);
-  const emTarget = emMonths * mExp, emGap = hasLiq ? Math.max(0, emTarget - liquidity) : 0;
-  const { svg: chart } = trendBars(rows.map((r, i) => ({ label: r.label, v: Math.max(0, r.margin), on: i === rows.length - 1 })), { aria: 'Margine mensile: entrate meno spese' });
-  if (!withInc.length) return `<div class="empty">Per calcolare la quota investibile servono le entrate (es. lo stipendio) registrate negli ultimi mesi.</div>`;
-  const big = (v, l, color) => `<div class="stat"><span class="v num" style="${color ? 'color:' + color : ''}">${v}</span><span class="small muted">${l}</span></div>`;
-  return `
-    <div class="ex-grid">
-      <div class="card col ex-wide" style="gap:14px">
-        <div class="row between" style="flex-wrap:wrap;gap:8px"><span style="font-weight:800">Quanto puoi investire ogni mese</span><span class="row" style="gap:6px">${[6, 12, 24].map(m => `<button class="chip ${n === m ? 'on' : ''}" style="height:32px" onclick="EX.months=${m};route()">${m} mesi</button>`).join('')}</span></div>
-        <div class="ex-kpis">${big(fmtMoney(mInc), 'entrate tipiche (mediana)')}${big(fmtMoney(mExp), 'spese tipiche, investimenti esclusi')}${big(fmtMoney(margin), 'margine al mese', margin >= 0 ? 'var(--accent)' : 'var(--warn)')}${big(fmtMoney(Math.max(pac, mInv)), 'già investito al mese')}</div>
-        <div class="col" style="gap:8px;padding:14px;border-radius:var(--r-m);background:${hexA('#D4FF5B', .08)};border:1px solid var(--accent)">
-          <span class="small muted">Quota investibile (margine meno il ${buffer}% tenuto come liquidità)</span>
-          <span class="num" style="font-size:30px;font-weight:700">${fmtMoney(investable)}<span class="small muted" style="font-size:13px"> al mese</span></span>
-          <span style="font-weight:700;color:${extra >= 0 ? 'var(--accent)' : 'var(--warn)'}">${extra >= 1 ? `Puoi aumentare gli investimenti di circa ${fmtMoney(extra)} al mese.` : extra <= -1 ? `Oggi investi ${fmtMoney(-extra)} al mese più della quota suggerita: stai usando parte del cuscinetto.` : 'Investi già circa la quota suggerita.'}</span>
-          ${emGap > 0 ? `<span class="small" style="color:var(--warn)">Prima conviene completare il fondo di emergenza: mancano ${fmtMoney(emGap)} (obiettivo ${emMonths} mesi di spese = ${fmtMoney(emTarget)}). Al ritmo del margine servono circa ${Math.ceil(emGap / Math.max(margin, 1))} mesi.</span>` : liquidity ? `<span class="small muted">Fondo di emergenza a posto: hai ${fmtMoney(liquidity)} di liquidità, l'obiettivo è ${fmtMoney(emTarget)} (${emMonths} mesi di spese).</span>` : `<span class="small muted">Inserisci qui sotto la liquidità che hai sui conti per verificare il fondo di emergenza (obiettivo ${fmtMoney(emTarget)}).</span>`}
-        </div>
-        <div class="ex-filters">
-          <label class="ex-f"><span>Cuscinetto di liquidità (%)</span><input type="number" min="0" max="90" value="${buffer}" onchange="exSavingsSet('saveBuffer',+this.value)"></label>
-          <label class="ex-f"><span>Fondo emergenza (mesi di spese)</span><input type="number" min="0" max="24" value="${emMonths}" onchange="exSavingsSet('emergencyMonths',+this.value)"></label>
-          <label class="ex-f"><span>Liquidità sui conti oggi (€)</span><input type="number" min="0" value="${liquidity || ''}" placeholder="facoltativo" onchange="exSavingsSet('liquidity',+this.value)"></label>
-        </div>
-        <span class="hint">Uso la mediana per non farmi ingannare da mesi eccezionali (tredicesima, spese straordinarie). Gli investimenti sono le categorie escluse dalle spese, come "Investimenti" e i PAC. Indicazione di calcolo, non consulenza finanziaria.</span>
-      </div>
-      <div class="card col" style="gap:12px"><span style="font-weight:800">Margine mese per mese</span>${chart}</div>
-      <div class="card col" style="gap:10px"><span style="font-weight:800">Dettaglio</span><div class="scroll-x"><table class="tbl"><thead><tr><th>Mese</th><th>Entrate</th><th>Spese</th><th>Investito</th><th>Resta</th></tr></thead><tbody>
-        ${rows.slice().reverse().map(r => `<tr><td>${monthLabel(r.k)}</td><td class="num">${fmtMoney(r.inc, false)}</td><td class="num">${fmtMoney(r.exp, false)}</td><td class="num">${fmtMoney(r.inv, false)}</td><td class="num" style="color:${r.free >= 0 ? 'var(--accent)' : 'var(--warn)'}">${r.free >= 0 ? '' : '-'}${fmtMoney(r.free, false)}</td></tr>`).join('')}</tbody></table></div></div>
-    </div>`;
+  const invested = Math.max(pac, rows.reduce((a, r) => a + r.inv, 0) / rows.length), extra = margin - invested;
+  const line = (l, v, sub, color) => `<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)"><span class="col" style="gap:1px"><span>${l}</span>${sub ? `<span class="small muted" style="font-weight:500">${sub}</span>` : ''}</span><span class="num" style="font-weight:700${color ? ';color:' + color : ''}">${v}</span></div>`;
+  return `<div class="col" style="gap:0">
+      <span class="small muted" style="font-weight:500">Da ${monthLabel(rows[0].k)} a ${monthLabel(rows[rows.length - 1].k)} · ${rows.length} mesi</span>
+      ${line('Entrate medie al mese', fmtMoney(avgInc))}
+      ${line('Spese tipiche al mese', '− ' + fmtMoney(mExp), 'mediana, investimenti esclusi')}
+      ${line('Margine', fmtMoney(margin), '', margin >= 0 ? 'var(--accent)' : 'var(--warn)')}
+      ${line('Già investito al mese', '− ' + fmtMoney(invested), 'PAC e categorie di investimento')}
+      <div class="row between" style="padding:14px;margin-top:10px;border-radius:var(--r-m);background:var(--surface-2)"><span style="font-weight:700">${extra >= 0 ? 'Puoi aggiungere circa' : 'Investi più del margine di'}</span><span class="num" style="font-size:22px;font-weight:700;color:${extra >= 0 ? 'var(--accent)' : 'var(--warn)'}">${fmtMoney(Math.abs(extra))} / mese</span></div>
+    </div>
+    <details><summary>Mese per mese</summary><div class="scroll-x" style="padding-top:8px"><table class="tbl"><thead><tr><th>Mese</th><th>Entrate</th><th>Spese</th><th>Investito</th><th>Resta</th></tr></thead><tbody>
+      ${rows.slice().reverse().map(r => `<tr><td>${monthLabel(r.k)}</td><td class="num">${fmtMoney(r.inc, false)}</td><td class="num">${fmtMoney(r.exp, false)}</td><td class="num">${fmtMoney(r.inv, false)}</td><td class="num" style="color:${r.free >= 0 ? 'var(--accent)' : 'var(--warn)'}">${r.free >= 0 ? '' : '-'}${fmtMoney(Math.abs(r.free), false)}</td></tr>`).join('')}</tbody></table></div></details>
+    <span class="hint">Media delle entrate e mediana delle spese su tutto lo storico. Indicazione di calcolo, non consulenza finanziaria.</span>`;
 }
 
 // ---------- Scheda Diario ----------
@@ -266,27 +255,47 @@ function pfAdvice() {
   }
   return { geo, risk, cats, L, B };
 }
-function exDiversificazione() {
-  const A = pfAdvice(); if (!A) return '<div class="empty">Aggiungi i tuoi strumenti in Portafoglio per vedere i consigli.</div>';
-  const { L } = A, bar = (v, m, c) => `<div style="position:relative;height:8px;border-radius:4px;background:var(--surface-2)"><div style="width:${Math.min(100, v)}%;height:100%;border-radius:4px;background:${c}"></div><div style="position:absolute;top:-3px;bottom:-3px;left:${m}%;width:2px;background:var(--text);opacity:.6"></div></div>`;
-  const B = A.B, t = balTarget();
-  return `
-    <div class="ex-grid">
-      <div class="card col" style="gap:12px"><span style="font-weight:800">A · Geografia e tipo di aziende</span>
-        ${Object.keys(REGIONS).map((k, i) => `<div class="col" style="gap:4px"><div class="row between small"><span>${REGIONS[k]}</span><span class="num"><b>${Math.round(L.reg[k])}%</b> <span class="muted">/ ${MARKET[k]}%</span></span></div>${bar(L.reg[k], MARKET[k], PALETTE[i])}</div>`).join('')}
-        <span class="small muted">Barra = tu · linea = mercato globale</span>
-        ${A.geo.length ? A.geo.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('') : '<span class="small">• In linea con il mercato globale</span>'}
-        ${A.cats.geo.map(etfCatList).join('')}
-      </div>
-      <div class="card col" style="gap:12px"><span style="font-weight:800">B · Profilo di rischio</span>
-        ${B.tot ? `<div class="col" style="gap:4px"><div class="row between small"><span>Azioni</span><span class="num"><b>${Math.round(B.eqPct * 100)}%</b> <span class="muted">/ ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%</span></span></div>
-          <div style="position:relative;height:8px;border-radius:4px;background:var(--surface-2)"><div style="position:absolute;left:${t.lo * 100}%;width:${(t.hi - t.lo) * 100}%;top:0;bottom:0;background:${hexA('#6EE7B7', .35)}"></div><div style="width:${B.eqPct * 100}%;height:100%;border-radius:4px;background:var(--accent);opacity:.85"></div></div></div>` : ''}
-        ${A.risk.map(x => `<span class="small" style="line-height:1.45">• ${x}</span>`).join('')}
-        ${A.cats.risk ? etfCatList(A.cats.risk) : ''}
-        <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(RISK).map(([k, r]) => `<button class="chip ${riskProfile() === k ? 'on' : ''}" style="height:32px" onclick="S.settings.risk='${k}';save();route()">${r[0]} ${r[1]}–${r[2]}%</button>`).join('')}</div>
-      </div>
+// Analisi del portafoglio: solo barre, niente testo.
+function pfAnalysis() {
+  const A = pfAdvice(); if (!A) return '';
+  const { L, B } = A, t = balTarget(), track = (w, extra = '') => `<div style="position:relative;height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden">${extra}<div style="position:absolute;inset:0 auto 0 0;width:${Math.min(100, w)}%;border-radius:3px;background:var(--accent)"></div></div>`;
+  return `<div class="col" style="gap:8px">
+      <div class="row between"><span style="font-weight:700">Profilo di rischio</span><span class="small muted">${riskLabel()} · ▏▕ = fascia ${Math.round(t.lo * 100)}–${Math.round(t.hi * 100)}%</span></div>
+      ${B.tot ? `<div class="row between small"><span>Azioni</span><span class="num">${Math.round(B.eqPct * 100)}%</span></div>${track(B.eqPct * 100, `<div style="position:absolute;top:0;bottom:0;left:${t.lo * 100}%;width:${(t.hi - t.lo) * 100}%;border-left:2px solid var(--text);border-right:2px solid var(--text);opacity:.6;z-index:1"></div>`)}` : ''}
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${Object.entries(RISK).map(([k, r]) => `<button class="chip ${riskProfile() === k ? 'on' : ''}" style="height:32px" onclick="S.settings.risk='${k}';save();route()">${r[0]}</button>`).join('')}</div>
     </div>
-    <span class="hint">Pesi indicativi, non consulenza finanziaria. Gli ETF elencati sono i più grandi della categoria su justETF, da confrontare: tocca il nome per aprire la scheda.</span>`;
+    <div class="col" style="gap:8px">
+      <div class="row between"><span style="font-weight:700">Geografia</span><span class="small muted">azioni · ▏= mercato globale</span></div>
+      ${Object.keys(REGIONS).map(k => `<div class="row between small"><span>${REGIONS[k]}</span><span class="num">${Math.round(L.reg[k])}%</span></div>${track(L.reg[k], `<div style="position:absolute;top:0;bottom:0;left:${MARKET[k]}%;width:2px;background:var(--text);opacity:.6;z-index:1"></div>`)}`).join('')}
+    </div>`;
+}
+// ETF per bilanciare: una lista per rischio o per geografia; toccando una riga si apre il perché.
+let pfEtfTab = 'rischio';
+const pfEtfOpen = new Set();
+function pfEtfItems() {
+  const A = pfAdvice(); if (!A) return [];
+  const { L, B } = A, t = balTarget(), out = [], held = new Set(holdingsLive().map(h => h.isin)), pct = v => Math.round(v) + '%';
+  const add = (k, why) => ETF_CAT[k][1].forEach(([isin, n, ter, sz]) => out.push({ isin, n, ter, sz, cat: ETF_CAT[k][0], why, held: held.has(isin) }));
+  if (pfEtfTab === 'rischio' && B.tot) {
+    if (B.eqPct > t.hi) add('bond', `Hai ${artPct(B.eqPct * 100)} in azioni, il profilo ${riskLabel()} ne prevede ${Math.round(t.lo * 100)}–${pct(t.hi * 100)}. Aggiungere obbligazioni abbassa la quota azionaria senza vendere quello che hai.`);
+    else if (B.eqPct < t.lo) add('world', `Hai ${artPct(B.eqPct * 100)} in azioni, il profilo ${riskLabel()} ne prevede ${Math.round(t.lo * 100)}–${pct(t.hi * 100)}. Un ETF azionario globale alza la quota azionaria restando diversificato.`);
+  }
+  if (pfEtfTab === 'geografia') {
+    Object.keys(REGIONS).forEach(k => { if (L.reg[k] - MARKET[k] < -5) add(k, `${REGIONS[k]}: hai ${artPct(L.reg[k])} delle azioni, nel mercato globale pesa ${artPct(MARKET[k])}.`); });
+    if (!L.held.some(i => ['world-small', 'acwi-imi'].includes(i))) add('small', 'Nel portafoglio non hai società piccole (small cap), che sono circa il 10% del mercato globale.');
+  }
+  return out;
+}
+function pfEtfList() {
+  const items = pfEtfItems(), A = pfAdvice();
+  const empty = pfEtfTab === 'rischio' ? 'Sei nella fascia del tuo profilo: per ora nessun ETF da aggiungere.' : 'La geografia è in linea con il mercato globale.';
+  return `<div class="segmented" style="align-self:flex-start">${[['rischio', 'Rischio'], ['geografia', 'Geografia']].map(([k, l]) => `<button class="${pfEtfTab === k ? 'on' : ''}" onclick="pfEtfTab='${k}';route()">${l}</button>`).join('')}</div>
+    ${!A ? '' : items.length ? `<div class="list">${items.map(e => { const open = pfEtfOpen.has(e.isin + e.cat); return `
+      <div class="item" style="flex-direction:column;align-items:stretch;gap:8px;cursor:pointer" onclick="pfEtfOpen.has('${e.isin + e.cat}')?pfEtfOpen.delete('${e.isin + e.cat}'):pfEtfOpen.add('${e.isin + e.cat}');route()">
+        <div class="row between" style="gap:10px"><span class="col grow" style="gap:2px"><span style="font-weight:600">${esc(e.n)}</span><span class="small muted" style="font-weight:500">${e.isin} · TER ${e.ter.toFixed(2).replace('.', ',')}% · ${e.sz >= 1000 ? (e.sz / 1000).toFixed(1).replace('.', ',') + ' mld €' : e.sz + ' mln €'}</span></span><span class="small muted" style="flex-shrink:0">${e.held ? 'Ce l\'hai' : e.cat}</span></div>
+        ${open ? `<div class="small" style="font-weight:500;line-height:1.5;padding:10px 12px;border-radius:var(--r-s);background:var(--surface-2)">${e.why} ${e.held ? 'Ce l\'hai già: puoi aumentare questo invece di aggiungerne uno nuovo.' : 'È tra i più grandi della categoria su justETF.'}<br><a href="${justEtf(e.isin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-weight:700">Apri su justETF ›</a></div>` : ''}
+      </div>`; }).join('')}</div>` : `<div class="small muted" style="font-weight:500">${empty}</div>`}
+    <span class="hint">Esempi presi dai fondi più grandi di ogni categoria su justETF (dati del 25/10/2026). Non è consulenza finanziaria: confrontali prima di decidere.</span>`;
 }
 
 // ---------- Schermata ----------
