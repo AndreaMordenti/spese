@@ -148,12 +148,16 @@ export function registerTools(server: McpServer, props: () => Props, env: Env) {
   server.tool("categorie", "Elenco delle categorie di Slow (spese ed entrate) con il budget mensile.", {},
     run(async (_a: any, d) => json(live(d.categories).map((c: any) => ({ nome: c.name, tipo: c.kind === "income" ? "entrata" : "spesa", budget: c.budget ? eur(c.budget) : null, esclusa_dalle_spese: !!c.excluded })))));
 
-  server.tool("allenamento", "Allenamento in Slow: profilo (peso, obiettivo, giorni, attrezzatura, fastidi), scheda attiva, sedute recenti con carichi, ripetizioni e sensazione (easy/ok/hard/fail), pesate e controlli di fine blocco. Serve per creare o aggiornare la scheda con salva_scheda.",
+  server.tool("allenamento", "Allenamento in Slow: profilo (peso, obiettivo, giorni, minuti a seduta, ripetizioni, recupero, attrezzatura, fastidi), scheda attiva, sedute recenti con carichi, ripetizioni e sensazione (easy/ok/hard/fail), pesate e controlli di fine blocco. Serve per creare o aggiornare la scheda con salva_scheda, rispettando le preferenze_scheda.",
     { giorni: z.number().int().min(7).max(365).optional().describe("Sedute degli ultimi N giorni, predefinito 90") },
     run(async ({ giorni }: any, d) => {
       const from = new Date(Date.now() - (giorni || 90) * 864e5).toISOString().slice(0, 10);
       const plan = live(d.wkPlans).filter((p: any) => p.active !== false).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
-      return json({ oggi: today(), profilo: live(d.wkProfile)[0] || null, scheda_attiva: plan,
+      const prof = live(d.wkProfile)[0] || null;
+      const range = (v: any) => v ? String(v).split("-").map(Number) : null;
+      return json({ oggi: today(), profilo: prof,
+        preferenze_scheda: prof ? { ripetizioni: range(prof.reps), recupero_secondi: range(prof.rest), minuti_a_seduta: prof.minutes || null, sedute_a_settimana: prof.days || null } : null,
+        scheda_attiva: plan,
         sedute: live(d.wkLogs).filter((l: any) => l.date >= from).sort((a: any, b: any) => a.date.localeCompare(b.date)).map((l: any) => ({ data: l.date, giorno: l.dayId, conclusa: !!l.done, esercizi: Object.values(l.ex || {}) })),
         pesate_e_controlli: live(d.wkChecks).sort((a: any, b: any) => a.date.localeCompare(b.date)).map(({ id, updatedAt, ...c }: any) => c) });
     }));

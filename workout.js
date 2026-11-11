@@ -164,6 +164,8 @@ function wkWeightBlock() {
 function wkAddWeight() { const v = Number(String($('#wk-kg').value).replace(',', '.')); if (!(v > 20 && v < 300)) return toast('Peso non valido'); S.wkChecks.push({ id: 'k-' + uid(), type: 'weight', date: todayISO(), kg: v, updatedAt: Date.now() }); save(); route(); }
 
 // ---------- Profilo (primo accesso) e controllo di fine blocco ----------
+const WK_REPS = [['6-8', '6-8'], ['8-10', '8-10'], ['10-12', '10-12'], ['12-15', '12-15']];
+const WK_REST = [['60', "1'"], ['60-90', "1'-1'30\""], ['90-120', "1'30\"-2'"], ['120-180', "2'-3'"]];
 const wkChips = (name, opts, cur) => `<div class="row" style="flex-wrap:wrap;gap:6px" data-pick="${name}">${opts.map(([v, l]) => `<button type="button" class="chip ${String(cur) === String(v) ? 'on' : ''}" data-v="${v}" onclick="this.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));this.classList.add('on')">${l}</button>`).join('')}</div>`;
 const wkPicked = name => { const b = document.querySelector(`[data-pick="${name}"] .chip.on`); return b ? b.dataset.v : ''; };
 function wkProfileForm(p) {
@@ -175,6 +177,8 @@ function wkProfileForm(p) {
     <div class="field"><label>Obiettivo</label>${wkChips('goal', WK_GOALS, p.goal)}</div>
     <div class="field"><label>Volte a settimana</label>${wkChips('days', [2, 3, 4, 5, 6].map(n => [n, n]), p.days)}</div>
     <div class="field"><label>Minuti a seduta</label>${wkChips('minutes', [45, 60, 75, 90].map(n => [n, n + "'"]), p.minutes)}</div>
+    <div class="field"><label>Ripetizioni</label>${wkChips('reps', WK_REPS, p.reps || '8-10')}</div>
+    <div class="field"><label>Recupero</label>${wkChips('rest', WK_REST, p.rest || '60-90')}</div>
     <div class="field"><label>Attrezzatura</label>${wkChips('equip', WK_EQUIP, p.equip)}</div>
     <div class="field"><label>Fastidi o limiti</label><input id="wp-pain" value="${esc(p.pain || '')}" placeholder="es. spalla destra, ginocchio"></div>
     <div class="field"><label>Esercizi che ami o che eviti</label><input id="wp-prefs" value="${esc(p.prefs || '')}"></div>
@@ -183,7 +187,7 @@ function wkProfileForm(p) {
 }
 function wkSaveProfile() {
   const n = id => { const v = $(id).value; return v === '' ? null : Number(String(v).replace(',', '.')); };
-  const old = wkProfile(), p = { id: 'profile', weight: n('#wp-weight'), height: n('#wp-height'), age: n('#wp-age'), sex: wkPicked('sex'), level: wkPicked('level'), goal: wkPicked('goal'), days: Number(wkPicked('days')), minutes: Number(wkPicked('minutes')), equip: wkPicked('equip'), pain: $('#wp-pain').value.trim(), prefs: $('#wp-prefs').value.trim(), loads: $('#wp-loads').value.trim(), updatedAt: Date.now() };
+  const old = wkProfile(), p = { id: 'profile', weight: n('#wp-weight'), height: n('#wp-height'), age: n('#wp-age'), sex: wkPicked('sex'), level: wkPicked('level'), goal: wkPicked('goal'), days: Number(wkPicked('days')), minutes: Number(wkPicked('minutes')), reps: wkPicked('reps'), rest: wkPicked('rest'), equip: wkPicked('equip'), pain: $('#wp-pain').value.trim(), prefs: $('#wp-prefs').value.trim(), loads: $('#wp-loads').value.trim(), updatedAt: Date.now() };
   if (!p.weight || !p.days) return toast('Inserisci almeno peso e volte a settimana');
   if (old) Object.assign(old, p); else S.wkProfile.push(p);
   if (!wkWeights().length) S.wkChecks.push({ id: 'k-' + uid(), type: 'weight', date: todayISO(), kg: p.weight, updatedAt: Date.now() });
