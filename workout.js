@@ -99,13 +99,14 @@ function wkExCard(plan, day, ex, i, date, log, deload) {
   const r = (log && log.ex[ex.id]) || {}, nx = wkNext(ex, date), sets = Math.max(1, ex.sets - (deload ? 1 : 0));
   const target = nx.load == null ? null : deload ? roundLoad(nx.load * 0.6) : nx.load, load = r.load ?? target;
   const reps = r.reps || [];
+  const has = !!(ex.img || (ex.cues && ex.cues.length));
   return `<div class="card col" style="gap:12px">
-    <div class="row between" style="align-items:flex-start"><div class="col" style="gap:2px"><span style="font-weight:800">${esc(ex.name)}</span><span class="small muted">${sets} × ${ex.reps[0]}-${ex.reps[1]} · recupero ${wkRest(ex.rest || 90)}</span></div>
+    <div class="row between" style="align-items:flex-start"><button class="col" style="gap:2px;text-align:left;flex:1" ${has ? `onclick="const h=this.closest('.card').querySelector('.wk-how');h.hidden=!h.hidden" aria-label="Come si fa: ${esc(ex.name)}"` : ''}><span style="font-weight:800">${esc(ex.name)}</span><span class="small muted">${sets} × ${ex.reps[0]}-${ex.reps[1]} · recupero ${wkRest(ex.rest || 90)}</span></button>
       <button class="chip" onclick="wkRestStart(${ex.rest || 90})" aria-label="Avvia recupero">${svg('clock', 16)} ${wkRest(ex.rest || 90)}</button></div>
-    ${ex.cues && ex.cues.length || ex.img ? `<details><summary class="small">Come si fa</summary><div class="col" style="gap:10px;margin-top:10px">
+    ${has ? `<div class="col wk-how" style="gap:10px" hidden>
       ${ex.img ? `<div class="row" style="gap:6px">${[0, 1].map(n => `<img src="${EX_IMG(ex.img, n)}" alt="${esc(ex.name)}, ${n ? 'fine' : 'inizio'} movimento" loading="lazy" style="width:50%;border-radius:10px;background:#fff;aspect-ratio:4/3;object-fit:cover">`).join('')}</div>` : ''}
       ${ex.cues && ex.cues.length ? `<ul class="small" style="padding-left:18px;display:flex;flex-direction:column;gap:4px">${ex.cues.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-    </div></details>` : ''}
+    </div>` : ''}
     <div style="display:grid;grid-template-columns:1.4fr repeat(${sets},1fr);gap:6px;align-items:end">
       <label class="col small muted" style="gap:4px">kg<input type="number" inputmode="decimal" step="0.5" value="${load ?? ''}" placeholder="–" style="min-height:40px;padding:6px 8px;text-align:center" onchange="wkSet('${date}','${ex.id}','load',this.value)"></label>
       ${Array.from({ length: sets }, (_, s) => `<label class="col small muted" style="gap:4px;text-align:center">${s + 1}ª<input type="number" inputmode="numeric" aria-label="Serie ${s + 1}, ripetizioni" value="${reps[s] ?? ''}" placeholder="${ex.reps[1]}" style="min-height:40px;padding:6px 2px;text-align:center;${reps[s] >= ex.reps[1] ? 'border-color:var(--accent);color:var(--accent)' : ''}" onchange="wkSet('${date}','${ex.id}','rep${s}',this.value)"></label>`).join('')}
