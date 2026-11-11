@@ -108,6 +108,10 @@ function load() {
     rules: s.rules || [],
     phone: s.phone || [],
     phoneTests: s.phoneTests || [],
+    wkProfile: s.wkProfile || [],
+    wkPlans: s.wkPlans || [],
+    wkLogs: s.wkLogs || [],
+    wkChecks: s.wkChecks || [],
     notifLog: s.notifLog || [],
     settings: Object.assign({ theme: 'system', clientId: '', aiProvider: 'groq', aiKey: '', aiModel: '', aiEndpoint: '', name: '', anaWidgets: null, proxyUrl: '', plannedSeeded: false }, s.settings || {}),
     meta: s.meta || { driveFileId: null, lastSync: null },
@@ -178,8 +182,8 @@ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ap
 // Registro delle schermate: i moduli (pianificati, portafoglio) aggiungono le loro.
 const VIEWS = { home: viewHome, analisi: viewAnalisi, aggiungi: viewAggiungi, diario: viewDiario, scan: viewScan, impostazioni: viewSettings, importa: viewImport, spese: viewSpese };
 function route() {
-  const h = (location.hash || '#analisi').slice(1).split('/');
-  const name = VIEWS[h[0]] ? h[0] : 'analisi';
+  const h = (location.hash || '#home').slice(1).split('/');
+  const name = VIEWS[h[0]] ? h[0] : 'home';
   if (name !== 'aggiungi') draft = null;
   // Torna in alto solo cambiando schermata: filtri, toggle e chip ridisegnano la pagina restando dove sei.
   const key = location.hash, y = window.scrollY, same = key === route.last;
@@ -195,14 +199,14 @@ function render(name, args) {
   const app = $('#app');
   const views = VIEWS;
   document.body.classList.toggle('modal', name === 'aggiungi');
-  const cols = ['home', 'analisi', 'portafoglio', 'diario', 'impostazioni'].includes(name) ? ' desk-cols' : '';
+  const cols = ['home', 'analisi', 'portafoglio', 'diario', 'impostazioni', 'allenamento'].includes(name) ? ' desk-cols' : '';
   app.innerHTML = (DEMO ? `<button class="demo-bar" onclick="go('#impostazioni')">Demo · dati di esempio, non salvati</button>` : '') + `<section class="screen active${cols}" data-view="${name}">${views[name](args)}</section>`;
-  renderNav(name);
+  renderNav(name === 'analisi' ? 'home' : name);
   if (views[name].after) views[name].after(args);
 }
 const gearBtn = () => `<button class="chip" onclick="go('#impostazioni')" aria-label="Impostazioni">${svg('gear', 18)}</button>`;
 function renderNav(active) {
-  const items = [['home', 'Spese', 'home'], ['analisi', 'Analisi', 'chart'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['diario', 'Diario', 'diary']];
+  const items = [['home', 'Spese', 'home'], ['diario', 'Diario', 'diary'], ['aggiungi', '', 'plus'], ['portafoglio', 'Portafoglio', 'trend'], ['allenamento', 'Allenamento', 'dumbbell']];
   // Su computer la stessa barra diventa una colonna laterale: marchio in alto e Impostazioni in fondo (solo desktop).
   $('#nav').innerHTML = `<div class="brand desk-only"><img src="icon-192.png" alt="">Slow</div>` + items.map(([r, label, ic]) => r === 'aggiungi'
     ? `<a href="#aggiungi" class="fab" aria-label="Aggiungi spesa">${svg('plus', 28, 3)}<span class="fab-label">Nuovo movimento</span></a>`
@@ -231,58 +235,93 @@ let currentMonth = monthKey(todayISO());
 function shiftMonth(n) { const [y, m] = currentMonth.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); currentMonth = localISO(d).slice(0, 7); }
 
 // ---------- Home ----------
+// Testata comune di Spese: Panoramica e Analisi sono due viste della stessa scheda.
+function speseHead(view, extra = '') {
+  return `<div class="row between"><span class="title">Spese</span><div class="row" style="gap:8px">${extra}
+      ${Drive.on() ? `<button onclick="Drive.sync(true)" aria-label="Salva su Google Drive" style="padding:10px"><span class="sync-dot ${Drive.state}" id="sync-dot"></span></button>` : ''}${gearBtn()}</div></div>
+    <div class="segmented" style="align-self:flex-start"><button class="${view === 'home' ? 'on' : ''}" onclick="go('#home')">Panoramica</button><button class="${view === 'analisi' ? 'on' : ''}" onclick="go('#analisi')">Analisi</button></div>`;
+}
+let homeCat = null;
 function viewHome() {
   const key = currentMonth, list = monthExpenses(key), total = sumBy(list), budget = totalBudget();
-  const income = sumBy(monthIncome(key));
-  const cs = byCategory(list);
+  const income = sumBy(monthIncome(key)), cs = byCategory(list);
   const [int, dec] = fmtMoney(total, false).split(',');
-  const pct = budget ? Math.min(100, Math.round(total / budget * 100)) : 0;
-  const recent = live(S.expenses).sort(byWhenDesc).slice(0, 6);
-  const budgetCats = cats('expense').filter(c => c.budget > 0 && !c.excluded);
-  const initials = (S.settings.name || 'Io').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const pct = budget ? Math.round(total / budget * 100) : 0;
+  const recent = live(S.expenses).sort(byWhenDesc).slice(0, 5);
+  const [y, m] = key.split('-').map(Number), prevK = localISO(new Date(y, m - 2, 1)).slice(0, 7), isCur = key === monthKey(todayISO());
+  const cutDay = isCur ? Number(todayISO().slice(8)) : 31, prevSame = sumBy(monthExpenses(prevK).filter(e => Number(e.date.slice(8)) <= cutDay));
+  const delta = prevSame ? Math.round((total - prevSame) / prevSame * 100) : null;
+  const { months } = completedMonths(6), ys = months.map(mm => sumBy(monthExpenses(mm.k))), lr = ys.filter(Boolean).length >= 3 ? linreg(ys) : null, avg6 = ys.reduce((a, b) => a + b, 0) / 6;
   return `
+    ${speseHead('home')}
     <div class="row between">
-      <button class="row" style="gap:12px;text-align:left" onclick="go('#impostazioni')" aria-label="Apri le impostazioni">
-        <div class="avatar">${esc(initials)}</div>
-        <div class="col"><span class="small muted">${S.settings.name ? 'Ciao' : 'Benvenuto'}</span><span style="font-weight:700">${esc(S.settings.name || 'nelle tue spese')}</span></div>
-      </button>
-      <div class="row" style="gap:10px">
-        ${Drive.on() ? `<button onclick="Drive.sync(true)" aria-label="Salva su Google Drive" title="${Drive.state === 'login' ? 'Tocca per salvare su Drive' : 'Google Drive'}" style="padding:10px"><span class="sync-dot ${Drive.state}" id="sync-dot"></span></button>` : ''}
-        ${gearBtn()}
-      </div>
-    </div>
-    <div class="row between">
-      <button class="chip" onclick="shiftMonth(-1);route()" aria-label="Mese precedente">${svg('back', 14, 2.5)}</button>
+      <button class="chip" onclick="shiftMonth(-1);homeCat=null;route()" aria-label="Mese precedente">${svg('back', 14, 2.5)}</button>
       <button class="chip grow" style="justify-content:center" onclick="go('#spese')">${monthLabel(key)}</button>
-      <button class="chip" onclick="shiftMonth(1);route()" aria-label="Mese successivo" ${key >= monthKey(todayISO()) ? 'disabled style="opacity:.4"' : ''}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="chip" onclick="shiftMonth(1);homeCat=null;route()" aria-label="Mese successivo" ${isCur ? 'disabled style="opacity:.4"' : ''}>${chevR}</button>
     </div>
     <div class="col" style="gap:6px">
-      <span class="small muted">Speso ${key === monthKey(todayISO()) ? 'questo mese' : 'nel mese'}</span>
+      <div class="row between"><span class="small muted">Speso ${isCur ? 'questo mese' : 'nel mese'}</span>${delta != null ? `<span class="chip" style="height:26px;font-size:12px;color:${delta > 0 ? 'var(--warn)' : 'var(--accent)'}">${delta > 0 ? '+' : ''}${delta}% vs ${shortMonth(prevK)}</span>` : ''}</div>
       <div class="hero-amount num"><span class="cur">€</span><span class="big">${int}</span><span class="cents">,${dec}</span></div>
-      <div class="col" style="gap:10px;margin-top:8px">
-        <div class="seg">${topWithRest(cs).map(c => `<div style="flex:${c.total};background:${c.cat.color}"></div>`).join('')}${budget ? `<div style="flex:${Math.max(0, budget - total)};background:var(--surface-2)"></div>` : ''}</div>
-        <div class="row between small">
-          <span class="muted">${budget ? pct + '% del budget' : 'Nessun budget impostato'}</span>
-          <span style="color:${total > budget && budget ? 'var(--warn)' : 'var(--accent)'}">${budget ? (total > budget ? fmtMoney(total - budget) + ' oltre' : fmtMoney(budget - total) + ' disponibili') : ''}</span>
-        </div>
-        ${income ? `<div class="row between small"><span class="muted">Entrate del mese</span><span class="num" style="color:var(--accent)">+ ${fmtMoney(income)}</span></div>` : ''}
-      </div>
+      ${budget ? `<div class="col" style="gap:8px;margin-top:6px">
+        <div class="bar"><div style="width:${Math.min(100, pct)}%;background:${total > budget ? 'var(--warn)' : 'var(--accent)'}"></div></div>
+        <div class="row between small"><span class="muted">${pct}% del budget</span><span style="color:${total > budget ? 'var(--warn)' : 'var(--accent)'}">${total > budget ? fmtMoney(total - budget) + ' oltre' : fmtMoney(budget - total) + ' disponibili'}</span></div>
+      </div>` : ''}
     </div>
     ${Drive.state === 'login' || (Drive.state === 'err' && S.meta.dirty) ? `<button class="empty" style="color:var(--warn);border-color:var(--warn);padding:12px" onclick="Drive.sync(true)">${svg('cloud', 16)} Modifiche non ancora su Drive: tocca per salvarle</button>` : ''}
-    ${homeTrendLine()}
-    ${budgetCats.length ? `<div class="hscroll">${budgetCats.map(c => {
-      const spent = sumBy(list.filter(e => e.cat === c.id)); const p = Math.round(spent / c.budget * 100);
-      return `<button class="card budget-card" onclick="go('#analisi')">
-        <div class="row between"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color};width:34px;height:34px;border-radius:12px">${svg(c.icon, 18)}</div><span class="small" style="color:${p > 100 ? 'var(--warn)' : 'var(--muted)'}">${p > 100 ? `+${p - 100}% oltre` : `${p}% usato`}</span></div>
-        <div class="col" style="gap:2px;text-align:left"><span style="font-size:14px;font-weight:700">${esc(c.name)}</span><span class="small muted">${fmtMoney(spent)} di ${fmtInt(c.budget)}</span></div>
-        <div class="bar"><div style="width:${Math.min(100, p)}%;background:${p > 100 ? 'var(--warn)' : c.color}"></div></div>
-      </button>`; }).join('')}</div>` : ''}
     ${typeof inboxHomeBlock === 'function' ? inboxHomeBlock() : ''}
-    ${plannedHomeBlock()}
-    <div class="col" style="gap:14px">
+    <div class="home-mini">
+      <a href="#analisi" class="col" style="gap:4px"><span class="small muted">Entrate / spese</span><span class="num" style="font-weight:700">${fmtInt(income)} / ${fmtInt(total)}</span><span class="small" style="color:${income >= total ? 'var(--accent)' : 'var(--warn)'}">${income ? (income >= total ? `risparmi il ${Math.round((income - total) / income * 100)}%` : `${fmtMoney(total - income)} sopra le entrate`) : 'nessuna entrata'}</span></a>
+      <a href="#analisi" class="col" style="gap:4px"><span class="small muted">Tendenza 6 mesi</span>${lr ? `${wideSpark(ys, slopeColor(lr.b, avg6))}<span class="small num" style="color:${slopeColor(lr.b, avg6)}">${trendWord(lr.b, avg6)}</span>` : '<span class="small muted">servono 3 mesi</span>'}</a>
+    </div>
+    ${cs.length ? `<div class="col" style="gap:10px"><div class="row between"><span class="section-title">Dove vanno</span><span class="small muted">tocca un riquadro</span></div>${treemap(cs, total)}${homeCat ? homeCatDetail(homeCat, list, prevK) : ''}</div>` : ''}
+    ${homeSavings()}
+    <div class="col" style="gap:10px">
       <div class="row between"><span class="section-title">Ultimi movimenti</span><a href="#spese" class="small" style="color:var(--accent)">Vedi tutti</a></div>
       ${recent.length ? `<div class="list">${recent.map(expenseRow).join('')}</div>` : `<div class="empty">Nessun movimento ancora.<br>Tocca + per registrare il primo, oppure importa i tuoi dati da Impostazioni.</div>`}
-    </div>`;
+    </div>
+    ${plannedHomeBlock()}`;
+}
+const wideSpark = (ys, color) => { const mx = Math.max(...ys, 1), mn = Math.min(...ys), r = mx - mn || 1; return `<svg viewBox="0 0 100 28" width="100%" height="28" preserveAspectRatio="none"><polyline points="${ys.map((v, i) => `${(i * 100 / (ys.length - 1)).toFixed(1)},${(25 - (v - mn) / r * 22).toFixed(1)}`).join(' ')}" style="fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke"/></svg>`; };
+// Mappa a riquadri: area proporzionale alla spesa, divisione alternata sul lato più lungo.
+function treemap(cs, total) {
+  const items = topWithRest(cs, 8).filter(x => x.total > 0), out = [];
+  const lay = (arr, x, y, w, h) => {
+    if (!arr.length) return;
+    if (arr.length === 1) { out.push({ it: arr[0], x, y, w, h }); return; }
+    const sum = arr.reduce((a, b) => a + b.total, 0); let acc = 0, k = 0;
+    while (k < arr.length - 1 && acc + arr[k].total <= sum / 2) acc += arr[k++].total;
+    if (k === 0) acc = arr[k++].total;
+    const f = acc / sum;
+    if (w >= h * 1.6) { lay(arr.slice(0, k), x, y, w * f, h); lay(arr.slice(k), x + w * f, y, w * (1 - f), h); }
+    else { lay(arr.slice(0, k), x, y, w, h * f); lay(arr.slice(k), x, y + h * f, w, h * (1 - f)); }
+  };
+  lay(items, 0, 0, 200, 100);
+  return `<div class="treemap">${out.map(({ it, x, y, w, h }) => { const id = it.cat.id || '', on = homeCat === id, dim = homeCat && !on;
+    return `<button style="left:${x / 2}%;top:${y}%;width:${w / 2}%;height:${h}%;background:${hexA(it.cat.color, on ? .55 : .3)};${dim ? 'opacity:.45;' : ''}" ${id ? `onclick="homeCat=homeCat==='${id}'?null:'${id}';route()"` : 'disabled'} aria-label="${esc(it.cat.name)} ${fmtMoney(it.total)}">
+      ${w * h > 600 ? `<span class="truncate">${esc(it.cat.name)}</span><span class="num">${fmtInt(it.total)} €</span>` : w * h > 180 ? `<span class="num">${Math.round(it.total / total * 100)}%</span>` : ''}</button>`; }).join('')}</div>`;
+}
+function homeCatDetail(id, list, prevK) {
+  const c = catById(id), mine = list.filter(e => e.cat === id).sort(byWhenDesc), t = sumBy(mine), prev = sumBy(monthExpenses(prevK).filter(e => e.cat === id)), tot = sumBy(list);
+  if (!mine.length) return '';
+  return `<div class="card col" style="gap:10px">
+    <div class="row between"><span style="font-weight:800">${esc(c.name)}</span><span class="num" style="font-weight:700">${fmtMoney(t)}</span></div>
+    <span class="small muted">${Math.round(t / tot * 100)}% del mese · ${mine.length} ${mine.length === 1 ? 'spesa' : 'spese'} · ${shortMonth(prevK)} ${fmtMoney(prev)}${c.budget ? ` · budget ${fmtInt(c.budget)} €` : ''}</span>
+    <div class="list">${mine.slice(0, 5).map(expenseRow).join('')}</div>
+    ${mine.length > 5 ? `<span class="small muted">e altre ${mine.length - 5}</span>` : ''}
+  </div>`;
+}
+// Risparmio dei 12 mesi completi: barre sopra o sotto lo zero.
+function homeSavings() {
+  const { months } = completedMonths(12), v = months.map(mm => sumBy(monthIncome(mm.k)) - sumBy(monthExpenses(mm.k)));
+  if (!months.some(mm => sumBy(monthIncome(mm.k)))) return '';
+  const mx = Math.max(...v.map(Math.abs), 1), W = 320, H = 72, z = v.some(x => x < 0) ? H * 0.72 : H - 2, bw = W / v.length;
+  const avg = v.reduce((a, b) => a + b, 0) / v.length, lr = linreg(v);
+  return `<a href="#analisi" class="col" style="gap:8px"><div class="row between"><span class="section-title">Risparmio nel tempo</span><span class="small muted">12 mesi</span></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img" aria-label="Risparmio mensile">
+      <line x1="0" y1="${z}" x2="${W}" y2="${z}" style="stroke:var(--line)"/>
+      ${v.map((x, i) => { const h = Math.abs(x) / mx * (x >= 0 ? z - 2 : H - z - 2); return `<rect x="${(i * bw + 3).toFixed(1)}" y="${(x >= 0 ? z - h : z).toFixed(1)}" width="${(bw - 6).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="3" style="fill:${x >= 0 ? 'var(--accent)' : 'var(--warn)'}"/>`; }).join('')}
+    </svg>
+    <span class="small muted">Media <b class="num" style="color:${avg >= 0 ? 'var(--accent)' : 'var(--warn)'}">${sgnMoney(avg)}</b> al mese${lr ? ' · ' + (Math.abs(lr.b) < Math.abs(avg) * 0.02 ? 'stabile' : lr.b > 0 ? 'in crescita' : 'in calo') : ''}</span></a>`;
 }
 function expenseRow(e) {
   const c = catById(e.cat), inc = typeOf(e) === 'income';
@@ -453,7 +492,7 @@ function anaCtx() {
   return { isMonth, year, inPeriod, list, income, cs, total: sumBy(list), shown: topWithRest(cs), label: isMonth ? monthLabel(currentMonth).split(' ')[0] : year,
     p: { start, end, cur, totalDays: daysBetween(start, end) + 1, elapsed: (cur ? daysBetween(start, today) : daysBetween(start, end)) + 1 } };
 }
-const ANA_DEFAULT = ['donut', 'cashflow', 'trend', 'budget', 'categorie'];
+const ANA_DEFAULT = ['trendline', 'calendar', 'monthpace', 'compare', 'top'];
 const ANA_WIDGETS = {
   donut: { title: 'Ripartizione per categoria', desc: 'Il grafico a ciambella con le percentuali.', icon: 'chart', render(c) {
     const C = 2 * Math.PI * 70; let acc = 0;
@@ -534,7 +573,11 @@ const ANA_WIDGETS = {
     </div>`; } },
 };
 // L'elenco per categoria va sempre in fondo: prima i grafici.
-const anaActive = () => { const a = (Array.isArray(S.settings.anaWidgets) ? S.settings.anaWidgets : ANA_DEFAULT).filter(id => ANA_WIDGETS[id]); return [...a.filter(id => id !== 'categorie'), ...a.filter(id => id === 'categorie')]; };
+const ANA_DROPPED = ['donut', 'categorie', 'trendgroups', 'budget', 'cashflow'];
+const anaActive = () => {
+  // Revisione di novembre 2026: tolti donut, elenco per categoria, trend per gruppo e budget (che sta già in Panoramica).
+  if (Array.isArray(S.settings.anaWidgets) && S.settings.anaV !== 2) { S.settings.anaWidgets = ['calendar', ...S.settings.anaWidgets.filter(id => !ANA_DROPPED.includes(id) && id !== 'calendar')]; S.settings.anaV = 2; }
+  const a = (Array.isArray(S.settings.anaWidgets) ? S.settings.anaWidgets : ANA_DEFAULT).filter(id => ANA_WIDGETS[id]); return [...a.filter(id => id !== 'categorie'), ...a.filter(id => id === 'categorie')]; };
 function anaSet(ids) { S.settings.anaWidgets = ids; save(false); route(); }
 function anaToggleEdit() { anaEdit = !anaEdit; route(); }
 function anaAdd(id) { anaSet([...anaActive().filter(x => x !== id), id]); }
@@ -555,19 +598,11 @@ function viewAnalisi() {
   if (anaEdit) return viewAnalisiEdit();
   const c = anaCtx(), isMonth = c.isMonth, year = c.year;
   return `
+    ${speseHead('analisi', `<button class="chip" onclick="go('#esplora')" aria-label="Analisi dettagliata delle spese">${svg('search', 18)}</button><button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>`)}
     <div class="row between">
-      <span class="title">Analisi</span>
-      <div class="row" style="gap:8px">
-        <button class="chip" onclick="go('#esplora')" aria-label="Analisi dettagliata delle spese">${svg('search', 18)}</button>
-        <button class="chip" onclick="anaToggleEdit()" aria-label="Personalizza i widget">${svg('sliders', 18)}</button>
-        ${gearBtn()}
-      </div>
-    </div>
-    <div class="segmented" style="align-self:flex-start"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">Mese</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">Anno</button></div>
-    <div class="row between">
-      <button class="chip" onclick="shiftMonth(${isMonth ? -1 : -12});route()" aria-label="Periodo precedente">${svg('back', 14, 2.5)}</button>
-      <span class="small muted">${isMonth ? monthLabel(currentMonth) : year}</span>
-      <button class="chip" onclick="shiftMonth(${isMonth ? 1 : 12});route()" aria-label="Periodo successivo" ${(isMonth ? currentMonth : year) >= (isMonth ? monthKey(todayISO()) : todayISO().slice(0, 4)) ? 'disabled style="opacity:.4"' : ''}>${chevR}</button>
+      <button class="chip" onclick="shiftMonth(${isMonth ? -1 : -12});calDay=null;route()" aria-label="Periodo precedente">${svg('back', 14, 2.5)}</button>
+      <div class="segmented"><button class="${isMonth ? 'on' : ''}" onclick="anaMode='mese';route()">${isMonth ? monthLabel(currentMonth) : 'Mese'}</button><button class="${!isMonth ? 'on' : ''}" onclick="anaMode='anno';route()">${!isMonth ? year : 'Anno'}</button></div>
+      <button class="chip" onclick="shiftMonth(${isMonth ? 1 : 12});calDay=null;route()" aria-label="Periodo successivo" ${(isMonth ? currentMonth : year) >= (isMonth ? monthKey(todayISO()) : todayISO().slice(0, 4)) ? 'disabled style="opacity:.4"' : ''}>${chevR}</button>
     </div>
     ${anaActive().map(id => ANA_WIDGETS[id].render(c)).join('') || '<div class="empty">Nessun widget in Analisi.<br>Tocca il pulsante in alto per aggiungerne.</div>'}`;
 }
@@ -626,7 +661,7 @@ function viewDiario() {
       ${habits.length ? `<div class="list">${habits.map(h => { const st = habitStats(h), done = isDone(h.id, diaryDate); return `
         <div class="item">
           <button class="tile" style="background:${hexA(h.color, .16)};color:${h.color}" onclick="editHabit('${h.id}')" aria-label="Modifica ${esc(h.name)}">${svg(h.icon, 22)}</button>
-          <div class="col grow"><span class="truncate" style="font-weight:700">${esc(h.name)}</span><span class="small muted">${st.week} questa settimana · ${st.month} questo mese</span></div>
+          <div class="col grow"><span class="truncate" style="font-weight:700">${esc(h.name)}</span><span class="small muted">${st.week} questa settimana · ${st.month} questo mese</span>${typeof wkPlan === 'function' && wkPlan() && wkGymHabit() && wkGymHabit().id === h.id ? `<a href="#allenamento/${diaryDate}" class="small" style="color:var(--accent);font-weight:700">Seduta ${diaryDate === todayISO() ? 'di oggi' : 'del giorno'} ›</a>` : ''}</div>
           <button class="check ${done ? 'on' : ''}" onclick="toggleLog('${h.id}','${diaryDate}')" aria-label="${done ? 'Annulla' : 'Segna fatto'}">${svg('check', 20, 3)}</button>
         </div>`; }).join('')}</div>` : '<div class="empty">Nessuna attività. Aggiungine una con il tasto in alto, oppure importa il tuo storico da Impostazioni.</div>'}
     </div>
@@ -814,7 +849,7 @@ const AI = {
 const GOOGLE_CLIENT_ID = '1024229130794-s41f7heqdmc489odeq3t1sb5uas63b2o.apps.googleusercontent.com';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 // Impostazioni che seguono l'utente su tutti i dispositivi (tema, notifiche e chiavi restano per dispositivo).
-const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint', 'saveBuffer', 'emergencyMonths', 'liquidity', 'risk'];
+const SYNCED_SETTINGS = ['name', 'anaWidgets', 'target', 'proxyUrl', 'plannedSeeded', 'aiProvider', 'aiModel', 'aiEndpoint', 'saveBuffer', 'emergencyMonths', 'liquidity', 'risk', 'anaV'];
 const pickSettings = st => Object.fromEntries(SYNCED_SETTINGS.filter(k => k in st).map(k => [k, st[k]]));
 const Drive = {
   state: '', token: null, exp: 0, client: null, FILE: 'spese-data.json', running: null, again: false,
@@ -857,7 +892,7 @@ const Drive = {
     const c = await (await this.api('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: this.FILE, parents: ['appDataFolder'], mimeType: 'application/json' }) })).json();
     S.meta.driveFileId = c.id; return c.id;
   },
-  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, inbox: S.inbox, rules: S.rules, phone: S.phone, phoneTests: S.phoneTests, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
+  payload() { return { version: 1, exportedAt: Date.now(), expenses: S.expenses, categories: S.categories, habits: S.habits, habitLogs: S.habitLogs, accounts: S.accounts, planned: S.planned, holdings: S.holdings, trades: S.trades, snaps: S.snaps, inbox: S.inbox, rules: S.rules, phone: S.phone, phoneTests: S.phoneTests, wkProfile: S.wkProfile, wkPlans: S.wkPlans, wkLogs: S.wkLogs, wkChecks: S.wkChecks, settings: pickSettings(S.settings), settingsAt: S.meta.settingsAt || 0 }; },
   mergeArr(local, remote) {
     const m = new Map(); [...local, ...remote].forEach(x => { const cur = m.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x); });
     return [...m.values()];
@@ -877,14 +912,14 @@ const Drive = {
       if (interactive) await this.init(true); else await this.ensureToken();
       const id = await this.findFile();
       const remote = await (await this.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`)).json().catch(() => null);
-      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
+      const sig = () => ['expenses', 'categories', 'habits', 'habitLogs', 'planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests', 'wkProfile', 'wkPlans', 'wkLogs', 'wkChecks'].map(k => S[k].length + ':' + Math.max(0, ...S[k].map(x => x.updatedAt || 0))).join('|') + JSON.stringify(pickSettings(S.settings));
       const before = sig();
       if (remote && remote.version) {
         S.expenses = this.mergeArr(S.expenses, remote.expenses || []);
         S.categories = this.mergeArr(S.categories, remote.categories || []);
         S.habits = this.mergeArr(S.habits, remote.habits || []);
         S.habitLogs = this.mergeArr(S.habitLogs, remote.habitLogs || []);
-        ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
+        ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests', 'wkProfile', 'wkPlans', 'wkLogs', 'wkChecks'].forEach(k => { S[k] = this.mergeArr(S[k], remote[k] || []); });
         if ((remote.categories || []).length) dropPristineDefaults();
         if (remote.accounts) S.accounts = [...new Set([...S.accounts, ...remote.accounts])];
         if (remote.settings && (remote.settingsAt || 0) > (S.meta.settingsAt || 0)) { Object.assign(S.settings, pickSettings(remote.settings)); S.meta.settingsAt = remote.settingsAt; S.meta.settingsHash = JSON.stringify(pickSettings(S.settings)); }
@@ -921,6 +956,7 @@ function det(id, title, body, dflt = false) {
 // ---------- Novità (note di rilascio) ----------
 // Da aggiornare a ogni rilascio: la prima voce è la più recente.
 const RELEASES = [
+  ['2026-11-11', ['Spese e Analisi nella stessa scheda: Panoramica e Analisi con l\'interruttore in alto', 'Panoramica: confronto col mese prima, entrate/spese, tendenza, mappa "Dove vanno" da toccare, risparmio nel tempo; prossimi pagamenti a scomparsa', 'Analisi: calendario giorno per giorno; tolti donut, elenco per categoria e trend per gruppo', 'Allenamento: profilo, scheda con foto e indicazioni, seduta con carichi, sensazione e recupero, progressione automatica, pesate e controllo di fine blocco', 'Diario: dalla palestra si apre la seduta del giorno', 'Niente avviso per i pagamenti ricorrenti letti dalle notifiche', 'Widget con la nuova palette']],
   ['2026-10-31', ['Tema scuro con la stessa identità del chiaro (numeri con grazie, verde)', 'Portafoglio più semplice: analisi di rischio e geografia a barre, lista di ETF per bilanciare (tocca per il perché)', 'Quanto puoi investire: sempre su tutto lo storico, senza scegliere i mesi', 'Filtri e pulsanti non riportano più la pagina in alto', 'Spese prima nella barra; percentuali delle categorie spiegate']],
   ['2026-10-25', ['Diario → Telefono: tempo di schermo, sblocchi, app più usate e il test dell\'ora (nell\'app Android)', 'Consigli del portafoglio: ETF della categoria da justETF, tocca il nome per aprire la scheda', 'Portafoglio: consigli completi e quanto puoi investire, tutto in una pagina; Esplora tolta (resta l\'analisi dettagliata delle spese da Analisi)', 'Foto dello scontrino e tag su ogni spesa (salvate anche su Drive)', 'Portafoglio: grafico del valore con 1S · 1M · 3M · 1A · Max e rendimento del periodo', 'Consigli brevi: geografia e profilo di rischio (Prudente, Bilanciato, Dinamico, Aggressivo)', 'Analisi: prima i grafici, l\'elenco per categoria in fondo', 'Diario: curiosità sugli ultimi 12 mesi', 'Impostazioni riorganizzate in gruppi, con lo stato di ogni voce', 'Pagamenti da notifiche: non propone quelli già pianificati; categoria con ricerca', 'Diario: storico di una attività alla volta, con frequenza e curiosità']],
   ['2026-10-13', ['Modalità demo: si entra con un tocco, per uscire serve il PIN (o il codice demo)', 'Widget "Segna attività": un tocco per registrare Read, Workout…', 'App desktop: si aggiorna da sola all\'apertura', 'Note di rilascio in Impostazioni']],
@@ -1187,7 +1223,7 @@ function applyPlan(plan) {
     S.expenses = Drive.mergeArr(S.expenses, b.expenses || []);
     S.habits = Drive.mergeArr(S.habits, b.habits || []);
     S.habitLogs = Drive.mergeArr(S.habitLogs, b.habitLogs || []);
-    ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
+    ['planned', 'holdings', 'trades', 'snaps', 'inbox', 'rules', 'phone', 'phoneTests', 'wkProfile', 'wkPlans', 'wkLogs', 'wkChecks'].forEach(k => { S[k] = Drive.mergeArr(S[k], b[k] || []); });
     // Pagamenti pianificati da togliere comunque (es. il PAC unico sostituito dai PAC per strumento), anche se modificati dopo.
     (b.removePlanned || []).forEach(id => { const p = S.planned.find(x => x.id === id); if (p && !p.deleted) { p.deleted = true; p.updatedAt = Date.now(); } });
     // Pagamenti pianificati importati con il nome della categoria (es. dal file di Trade Republic): la risolve qui.

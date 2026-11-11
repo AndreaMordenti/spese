@@ -78,7 +78,6 @@ ANA_WIDGETS.trendline = { title: 'Trend delle spese', desc: 'Andamento degli ult
       <div class="stat"><span class="v num" style="font-size:18px;color:${flat ? 'inherit' : slope > 0 ? 'var(--warn)' : 'var(--accent)'}">${flat ? '≈ stabile' : sgnMoney(slope) + '/mese'}</span><span class="small muted">${verdict}</span></div>
       <div class="stat" style="text-align:right"><span class="v num" style="font-size:18px">${fmtMoney(next)}</span><span class="small muted">stima di ${nextLabel}</span></div>
     </div>
-    <span class="hint">Linea tratteggiata: tendenza lineare sui mesi completi${lr.r2 < 0.3 ? '. Andamento molto variabile, la stima è poco affidabile' : ''}.</span>
   </div>`; } };
 
 ANA_WIDGETS.trendcat = { title: 'Trend per categoria', desc: 'Quali categorie crescono o calano di più negli ultimi 6 mesi.', icon: 'tag', render() {

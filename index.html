@@ -177,6 +177,14 @@
   .legend .row { gap: 8px; }
   .dot { width: 10px; height: 10px; border-radius: 4px; flex-shrink: 0; }
   :root[data-theme="minimal"] .dot { border-radius: 50%; }
+  .home-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .home-mini > a { border-top: 1px solid var(--line); padding-top: 10px; color: inherit; text-decoration: none; }
+  .treemap { position: relative; height: 190px; border-radius: 14px; overflow: hidden; }
+  .treemap button { position: absolute; border: 2px solid var(--bg); border-radius: 10px; padding: 7px 8px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; text-align: left; color: var(--text); font-size: 12px; font-weight: 700; overflow: hidden; transition: opacity .15s; }
+  .treemap button span:last-child { font-weight: 500; opacity: .8; }
+  .cal-heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .cal-heat button { aspect-ratio: 1; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text); }
+  .cal-heat button.sel { outline: 2px solid var(--text); outline-offset: -2px; }
   .bars { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; height: 110px; }
   .bars > div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; height: 100%; }
   .bars .b { width: 100%; border-radius: 10px 10px 4px 4px; background: var(--surface-3); min-height: 2px; }
@@ -353,6 +361,7 @@
 <script src="explore.js" defer></script>
 <script src="demo.js" defer></script>
 <script src="phone.js" defer></script>
+<script src="workout.js" defer></script>
   <script src="receipts.js" defer></script>
 <script src="boot.js" defer></script>
 </body>

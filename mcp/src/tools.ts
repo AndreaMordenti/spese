@@ -148,7 +148,43 @@ export function registerTools(server: McpServer, props: () => Props, env: Env) {
   server.tool("categorie", "Elenco delle categorie di Slow (spese ed entrate) con il budget mensile.", {},
     run(async (_a: any, d) => json(live(d.categories).map((c: any) => ({ nome: c.name, tipo: c.kind === "income" ? "entrata" : "spesa", budget: c.budget ? eur(c.budget) : null, esclusa_dalle_spese: !!c.excluded })))));
 
+  server.tool("allenamento", "Allenamento in Slow: profilo (peso, obiettivo, giorni, attrezzatura, fastidi), scheda attiva, sedute recenti con carichi, ripetizioni e sensazione (easy/ok/hard/fail), pesate e controlli di fine blocco. Serve per creare o aggiornare la scheda con salva_scheda.",
+    { giorni: z.number().int().min(7).max(365).optional().describe("Sedute degli ultimi N giorni, predefinito 90") },
+    run(async ({ giorni }: any, d) => {
+      const from = new Date(Date.now() - (giorni || 90) * 864e5).toISOString().slice(0, 10);
+      const plan = live(d.wkPlans).filter((p: any) => p.active !== false).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))[0] || null;
+      return json({ oggi: today(), profilo: live(d.wkProfile)[0] || null, scheda_attiva: plan,
+        sedute: live(d.wkLogs).filter((l: any) => l.date >= from).sort((a: any, b: any) => a.date.localeCompare(b.date)).map((l: any) => ({ data: l.date, giorno: l.dayId, conclusa: !!l.done, esercizi: Object.values(l.ex || {}) })),
+        pesate_e_controlli: live(d.wkChecks).sort((a: any, b: any) => a.date.localeCompare(b.date)).map(({ id, updatedAt, ...c }: any) => c) });
+    }));
+
+  server.tool("cerca_esercizio", "Cerca nel catalogo free-exercise-db (pubblico dominio, con foto) l'id da usare come 'foto' in salva_scheda. Nomi in inglese, es. 'bench press', 'lat pulldown'.",
+    { nome: z.string() },
+    async ({ nome }: any) => {
+      try {
+        const all: any[] = await (await fetch("https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/dist/exercises.json")).json();
+        const words = norm(nome).split(/\s+/).filter(Boolean);
+        const hits = all.filter(e => words.every(w => norm(e.name).includes(w))).slice(0, 15);
+        return json(hits.map(e => ({ foto: e.id, nome: e.name, attrezzo: e.equipment, muscoli: e.primaryMuscles, meccanica: e.mechanic })));
+      } catch (e: any) { return { ...text("Errore: " + (e.message || e)), isError: true }; }
+    });
+
   // ===================== SCRITTURA =====================
+  server.tool("salva_scheda", "Salva una nuova scheda di allenamento in Slow e la rende attiva (la precedente resta nello storico). Ogni esercizio: serie, intervallo di ripetizioni, recupero, carico di partenza se noto, indicazioni brevi in italiano e l'id foto da cerca_esercizio.",
+    { nome: z.string(), settimane: z.number().int().min(3).max(12).describe("Durata del blocco; l'ultima settimana è di scarico"), inizio: z.string().optional().describe("AAAA-MM-GG, vuoto = oggi"), note: z.string().optional(),
+      giorni: z.array(z.object({ nome: z.string().describe("Etichetta breve, es. A"), titolo: z.string().describe("es. Petto, spalle, tricipiti"), minuti: z.number().int().optional(),
+        esercizi: z.array(z.object({ nome: z.string(), serie: z.number().int().min(1).max(8), rip_min: z.number().int(), rip_max: z.number().int(), recupero_s: z.number().int(), carico_kg: z.number().optional(), incremento_kg: z.number().optional().describe("2.5 multiarticolari, 1-1.25 complementari"), foto: z.string().optional(), indicazioni: z.array(z.string()).optional() })) })) },
+    run(async (a: any, d, save) => {
+      d.wkPlans = d.wkPlans || []; const now = Date.now();
+      live(d.wkPlans).forEach((p: any) => { if (p.active !== false) { p.active = false; p.updatedAt = now; } });
+      const plan = { id: "p-" + uid(), name: a.nome, weeks: a.settimane, startDate: a.inizio || today(), notes: a.note || "", createdAt: now, active: true, updatedAt: now,
+        days: a.giorni.map((g: any, i: number) => ({ id: "d" + (i + 1), name: g.nome, title: g.titolo, minutes: g.minuti || null,
+          exercises: g.esercizi.map((e: any, j: number) => ({ id: `d${i + 1}e${j + 1}-${norm(e.nome).replace(/[^a-z0-9]+/g, "-").slice(0, 24)}`, name: e.nome, sets: e.serie, reps: [e.rip_min, e.rip_max], rest: e.recupero_s, load: e.carico_kg ?? null, inc: e.incremento_kg ?? 2.5, img: e.foto || null, cues: e.indicazioni || [] })) })) };
+      d.wkPlans.push(plan); await save(d);
+      return text(`Scheda "${plan.name}" salvata e attiva dal ${plan.startDate}: ${plan.days.length} giorni, ${plan.weeks} settimane.`);
+    }));
+
+
   server.tool("registra_movimento", "Registra una spesa o un'entrata in Slow. La categoria si indica per nome (vedi lo strumento categorie).",
     { importo: z.number().positive(), categoria: z.string(), tipo: z.enum(["spesa", "entrata"]).optional(), data: z.string().optional().describe("AAAA-MM-GG, vuoto = oggi"), nota: z.string().optional().describe("Esercente o descrizione"), conto: z.string().optional() },
     run(async (a: any, d, save) => {

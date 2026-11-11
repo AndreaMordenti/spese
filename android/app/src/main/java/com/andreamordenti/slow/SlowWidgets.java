@@ -111,7 +111,7 @@ public abstract class SlowWidgets extends AppWidgetProvider {
             JSONObject t = d.optJSONObject("today");
             v.setTextViewText(R.id.w_title, t != null ? t.optString("title", "Oggi") : "Oggi");
             v.setTextViewText(R.id.w_value, t != null ? t.optString("value", "–") : "Apri Slow");
-            v.setTextColor(R.id.w_value, t != null && t.optBoolean("over") ? 0xFFFFB36B : 0xFFD4FF5B);
+            v.setTextColor(R.id.w_value, t != null && t.optBoolean("over") ? 0xFFE39A5E : 0xFF7CC4A0);
             v.setTextViewText(R.id.w_sub, t != null ? t.optString("sub", "") : "");
             v.setOnClickPendingIntent(R.id.w_root, open(ctx, "#home", 5));
             return v;
@@ -148,7 +148,7 @@ public abstract class SlowWidgets extends AppWidgetProvider {
                 if (r == null) continue;
                 boolean done = r.optBoolean("done");
                 v.setTextViewText(btns[i], (done ? "✓ " : "+ ") + r.optString("name", ""));
-                v.setTextColor(btns[i], done ? 0xFF0D0E12 : 0xFFF3F4F6);
+                v.setTextColor(btns[i], done ? 0xFF111412 : 0xFFECEAE4);
                 v.setInt(btns[i], "setBackgroundResource", done ? R.drawable.widget_btn_on : R.drawable.widget_btn);
                 Intent t = new Intent(ctx, DiaryWidget.class).setAction(ACTION_DIARY).putExtra("id", r.optString("id"));
                 v.setOnClickPendingIntent(btns[i], PendingIntent.getBroadcast(ctx, 100 + i, t, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));

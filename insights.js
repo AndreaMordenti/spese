@@ -38,7 +38,6 @@ ANA_WIDGETS.monthpace = { title: 'Ritmo del mese', desc: 'Spesa cumulata giorno 
       <div class="stat"><span class="v num" style="font-size:18px;color:${diff > 0 ? 'var(--warn)' : 'var(--accent)'}">${sgnMoney(diff)}</span><span class="small muted">rispetto ${upto === 8 || upto === 11 ? "all'" : 'al '}${upto} ${shortMonth(prevK)}</span></div>
       <div class="stat" style="text-align:right"><span class="v num" style="font-size:18px">${fmtMoney(proj)}</span><span class="small muted">${isCur ? 'stima a fine mese' : 'totale del mese'}</span></div>
     </div>
-    ${isCur ? '<span class="hint">Linea tratteggiata arancio: proiezione lineare del ritmo di questo mese. Le spese grosse a inizio mese (affitto, rate) la fanno sembrare più alta nei primi giorni.</span>' : ''}
   </div>`; } };
 
 ANA_WIDGETS.savings = { title: 'Risparmio nel tempo', desc: 'Entrate meno spese mese per mese negli ultimi 12 mesi, con la tendenza.', icon: 'bank', render() {
@@ -185,3 +184,23 @@ function diaryHistory(habits) {
       </div></details>
     </div>`;
 }
+
+// Calendario a intensità: ogni giorno colorato in base a quanto hai speso, tocca per vedere i movimenti.
+let calDay = null;
+ANA_WIDGETS.calendar = { title: 'Giorno per giorno', desc: 'Calendario del mese colorato in base alla spesa di ogni giorno.', icon: 'clock', render(c) {
+  if (!c.isMonth) return '';
+  const [y, m] = currentMonth.split('-').map(Number), dim = new Date(y, m, 0).getDate(), lead = (new Date(y, m - 1, 1).getDay() + 6) % 7, today = todayISO();
+  const per = Array(dim + 1).fill(0); c.list.forEach(e => { per[Number(e.date.slice(8))] += Number(e.amount || 0); });
+  // Scala sul 90° percentile: affitto e rate non schiacciano tutti gli altri giorni.
+  const sorted = per.slice(1).filter(Boolean).sort((a, b) => a - b), cap = sorted[Math.floor(sorted.length * 0.9)] || 1;
+  const sel = calDay && calDay.startsWith(currentMonth) ? calDay : null, sd = sel ? Number(sel.slice(8)) : 0, dayList = sel ? c.list.filter(e => e.date === sel).sort(byWhenDesc) : [];
+  const cells = Array.from({ length: lead }, () => '<span></span>').join('') + Array.from({ length: dim }, (_, i) => {
+    const d = i + 1, iso = `${currentMonth}-${String(d).padStart(2, '0')}`, v = per[d], fut = iso > today, p = Math.min(1, v / cap);
+    return `<button class="${d === sd ? 'sel' : ''}" ${fut ? 'disabled' : `onclick="calDay=calDay==='${iso}'?null:'${iso}';route()"`} style="background:${fut ? 'transparent' : v ? `color-mix(in srgb, var(--accent) ${Math.round(25 + p * 75)}%, var(--surface-2))` : 'var(--surface-2)'};${fut ? 'color:var(--faint)' : p > 0.6 ? 'color:var(--on-accent)' : ''}" aria-label="${d}: ${fmtMoney(v)}">${d}</button>`;
+  }).join('');
+  return `<div class="col" style="gap:10px">
+    <div class="row between"><span class="section-title">Giorno per giorno</span><span class="small muted">media ${fmtMoney(c.total / Math.max(1, c.p.elapsed))} al giorno</span></div>
+    <div class="cal-heat">${['L', 'M', 'M', 'G', 'V', 'S', 'D'].map(l => `<span class="small muted">${l}</span>`).join('')}${cells}</div>
+    ${sel ? `<div class="card col" style="gap:8px"><div class="row between"><span style="font-weight:800">${fmtDate(sel, { weekday: 'long', day: 'numeric', month: 'long' })}</span><span class="num" style="font-weight:700">${fmtMoney(per[sd])}</span></div>
+      ${dayList.length ? `<div class="list">${dayList.map(expenseRow).join('')}</div>` : '<span class="small muted">Nessuna spesa.</span>'}</div>` : ''}
+  </div>`; } };

@@ -206,6 +206,13 @@ public class SlowWidgetPlugin extends Plugin {
         call.resolve();
     }
 
+    // Importi ricorrenti (separati da virgola): letti da una notifica non fanno partire l'avviso.
+    @PluginMethod
+    public void setSkipAmounts(PluginCall call) {
+        SlowNotificationListener.prefs(getContext()).edit().putString("skip", call.getString("amounts", "")).apply();
+        call.resolve();
+    }
+
     // Consegna all'app le notifiche lette e svuota la coda.
     @PluginMethod
     public void takeNotifications(PluginCall call) {

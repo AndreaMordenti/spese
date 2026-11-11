@@ -52,7 +52,8 @@ public class SlowNotificationListener extends NotificationListenerService {
                 while (q.length() > MAX_QUEUE) q.remove(0);
                 prefs(this).edit().putString("queue", q.toString()).apply();
             }
-            if (looksLikePayment(title + " " + text + " " + big)) remind();
+            String all = title + " " + text + " " + big;
+            if (looksLikePayment(all) && !isRecurring(all)) remind();
         } catch (Exception e) { /* una notifica illeggibile non deve fermare il servizio */ }
     }
 
@@ -60,6 +61,22 @@ public class SlowNotificationListener extends NotificationListenerService {
 
     // Solo per decidere se avvisare: la lettura vera la fa l'app.
     private static boolean looksLikePayment(String s) { return s.matches("(?is).*(€|eur|euro)\\s?.*") && s.matches("(?is).*\\d+[.,]\\d{2}.*"); }
+
+    // Un importo uguale (±2%) a un pagamento ricorrente: niente avviso, lo gestisce l'app.
+    private boolean isRecurring(String s) {
+        String skip = prefs(this).getString("skip", "");
+        if (skip.isEmpty()) return false;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,3}(?:[.\\s]\\d{3})*,\\d{2}|\\d+\\.\\d{2})").matcher(s);
+        while (m.find()) {
+            String t = m.group(1).replaceAll("\\s", "");
+            t = t.contains(",") ? t.replace(".", "").replace(",", ".") : t;
+            double v; try { v = Double.parseDouble(t); } catch (NumberFormatException e) { continue; }
+            for (String k : skip.split(",")) {
+                try { double r = Double.parseDouble(k); if (Math.abs(r - v) <= Math.max(0.05, r * 0.02)) return true; } catch (NumberFormatException e) { /* voce non valida */ }
+            }
+        }
+        return false;
+    }
 
     // Avviso discreto: "Hai movimenti da confermare in Slow".
     private void remind() {
@@ -70,7 +87,7 @@ public class SlowNotificationListener extends NotificationListenerService {
         Intent i = new Intent(this, MainActivity.class).putExtra(SlowWidgets.EXTRA_ROUTE, "#inbox").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 10, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, "slow_inbox")
-            .setSmallIcon(R.drawable.ic_stat_slow).setColor(0xFFD4FF5B)
+            .setSmallIcon(R.drawable.ic_stat_slow).setColor(0xFF7CC4A0)
             .setContentTitle("Nuovo pagamento letto").setContentText("Tocca per confermarlo in Slow")
             .setContentIntent(pi).setAutoCancel(true);
         nm.notify(7001, b.build());

@@ -48,6 +48,15 @@ function paceWidget(key, budget) {
   const same = prev[Math.min(upto, pdim)], d = cur[upto] - same;
   return { title: `${monthLabel(key)} · ${fmtMoney(cur[upto])}`, sub: `${d >= 0 ? '+' : '-'}${fmtMoney(Math.abs(d))} rispetto allo stesso giorno di ${shortMonth(prevK)}${budget ? ' · budget ' + fmtMoney(budget) : ''}`, img: c.toDataURL('image/png').split(',')[1] };
 }
+// Importi ricorrenti (pianificati e spese che tornano ogni mese): l'app Android non avvisa quando li legge da una notifica.
+function recurringAmounts() {
+  const out = new Set(plannedAll().filter(p => p.active !== false && Number(p.amount) > 0).map(p => Number(p.amount).toFixed(2)));
+  const since = addDays(todayISO(), -190), seen = {};
+  live(S.expenses).filter(e => typeOf(e) === 'expense' && e.date >= since).forEach(e => { const k = (e.note || e.cat).toLowerCase().trim() + '|' + Number(e.amount).toFixed(2); (seen[k] = seen[k] || new Set()).add(monthKey(e.date)); });
+  Object.entries(seen).forEach(([k, ms]) => { if (ms.size >= 3) out.add(k.split('|').pop()); });
+  return [...out].join(',');
+}
+function pushSkipAmounts() { const w = Native.plugin('SlowWidget'); if (w && w.setSkipAmounts) w.setSkipAmounts({ amounts: recurringAmounts() }).catch(() => {}); }
 function pushWidgets() { const w = Native.plugin('SlowWidget'); if (w) w.update({ data: JSON.stringify(widgetData()) }).catch(() => {}); }
 
 // ---------- Notifiche ----------
@@ -118,7 +127,7 @@ function nativeGoogleLogout() { /* il permesso si revoca da account Google → S
 
 // ---------- Collegamento con l'app ----------
 let nativeTimer = null;
-function onDataSaved() { if (!Native.on) return; clearTimeout(nativeTimer); nativeTimer = setTimeout(() => { pushWidgets(); scheduleNotifications(); }, 800); }
+function onDataSaved() { if (!Native.on) return; clearTimeout(nativeTimer); nativeTimer = setTimeout(() => { pushWidgets(); pushSkipAmounts(); scheduleNotifications(); }, 800); }
 async function nativeBoot() {
   if (!Native.on || DEMO) return; // in demo niente widget, notifiche né lettura di notifiche/SMS
   const N = Native.plugin('LocalNotifications'), W = Native.plugin('SlowWidget');

@@ -85,8 +85,21 @@ function demoData() {
     phone.push({ id: d, date: d, screenMin: Math.round(u * between(2.2, 3.4)), unlocks: u, first: `0${6 + Math.floor(rnd() * 3)}:${String(Math.floor(rnd() * 60)).padStart(2, '0')}`, last: late ? `00:${String(Math.floor(rnd() * 59)).padStart(2, '0')}` : `23:${String(Math.floor(rnd() * 59)).padStart(2, '0')}`, lateMin: late,
       apps: [{ n: 'Instagram', min: Math.round(between(25, 75)), opens: Math.round(between(10, 30)) }, { n: 'WhatsApp', min: Math.round(between(20, 50)), opens: Math.round(between(15, 40)) }, { n: 'Chrome', min: Math.round(between(10, 35)), opens: Math.round(between(4, 12)) }], updatedAt: 1 }); }
   const phoneTests = [{ id: 'demo-pt1', date: addDays(today, -3), count: 9, mins: 60, updatedAt: 1 }];
+  const wkPlan = { id: 'demo-plan', name: 'Massa · 3 giorni', weeks: 6, startDate: addDays(today, -16), notes: '', createdAt: 1, active: true, updatedAt: 1, days: [
+    { id: 'd1', name: 'A', title: 'Petto, spalle, tricipiti', minutes: 60, exercises: [
+      { id: 'd1e1', name: 'Panca piana', sets: 4, reps: [8, 10], rest: 90, load: 70, inc: 2.5, img: 'Barbell_Bench_Press_-_Medium_Grip', cues: ['Scapole strette e basse, piedi a terra.', 'Bilanciere al petto all\'altezza dei capezzoli, gomiti a 45°.', 'Spingi senza staccare i glutei dalla panca.'] },
+      { id: 'd1e2', name: 'Military press con manubri', sets: 3, reps: [8, 10], rest: 90, load: 20, inc: 1, img: 'Dumbbell_Shoulder_Press', cues: ['Schiena appoggiata, addome contratto.', 'Manubri all\'altezza delle orecchie, poi spingi sopra la testa.'] },
+      { id: 'd1e3', name: 'Pushdown ai cavi', sets: 3, reps: [8, 10], rest: 60, load: 25, inc: 1.25, img: 'Triceps_Pushdown', cues: ['Gomiti fermi ai fianchi.', 'Estendi del tutto e torna piano.'] }] },
+    { id: 'd2', name: 'B', title: 'Schiena, bicipiti', minutes: 60, exercises: [
+      { id: 'd2e1', name: 'Lat machine', sets: 4, reps: [8, 10], rest: 90, load: 55, inc: 2.5, img: 'Wide-Grip_Lat_Pulldown', cues: ['Petto in fuori, tira la sbarra al mento.'] },
+      { id: 'd2e2', name: 'Rematore con bilanciere', sets: 4, reps: [8, 10], rest: 90, load: 50, inc: 2.5, img: 'Bent_Over_Barbell_Row', cues: ['Busto a 45°, schiena neutra.', 'Tira verso l\'ombelico.'] }] },
+    { id: 'd3', name: 'C', title: 'Gambe', minutes: 60, exercises: [
+      { id: 'd3e1', name: 'Squat', sets: 4, reps: [8, 10], rest: 90, load: 80, inc: 2.5, img: 'Barbell_Squat', cues: ['Piedi alla larghezza delle spalle.', 'Scendi almeno con le cosce parallele.'] }] }] };
+  const wkLogs = [[-14, 'd1', 70, [10, 10, 10, 10], 'ok'], [-12, 'd2', null], [-9, 'd3', null], [-7, 'd1', 72.5, [10, 9, 9, 8], 'hard'], [-5, 'd2', null], [-2, 'd3', null]].map(([o, day, l, reps, feel], i) => ({ id: 'demo-wl' + i, date: addDays(today, o), planId: 'demo-plan', dayId: day, done: true, updatedAt: 1, ex: l ? { d1e1: { name: 'Panca piana', load: l, reps, feel } } : {} }));
+  const wkProfile = [{ id: 'profile', weight: 78, height: 180, age: 34, sex: 'm', level: 'medio', goal: 'massa', days: 3, minutes: 60, equip: 'palestra', pain: '', prefs: '', loads: '', updatedAt: 1 }];
+  const wkChecks = [[-30, 77.4], [-16, 77.9], [-2, 78.4]].map(([o, k], i) => ({ id: 'demo-wc' + i, type: 'weight', date: addDays(today, o), kg: k, updatedAt: 1 }));
   return {
-    phone, phoneTests,
+    phone, phoneTests, wkPlans: [wkPlan], wkLogs, wkProfile, wkChecks,
     expenses: ex, categories, habits: habits.map(({ f, ...h }) => ({ ...h, updatedAt: 1 })), habitLogs, accounts: ['Carta', 'Satispay', 'Conto', 'Broker'],
     planned, holdings: holdings.map(({ base, step, pac, ...h }) => ({ ...h, updatedAt: 1 })), trades, snaps, inbox, rules: [], notifLog: [],
     settings: { ...S.settings, name: 'Demo', plannedSeeded: true, driveOn: false, anaWidgets: null, liquidity: 9000 },

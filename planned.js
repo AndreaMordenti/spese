@@ -168,12 +168,11 @@ function deletePlanned(id) {
 function plannedHomeBlock() {
   if (!plannedAll().length) return '';
   const up = upcomingPlanned(30), pend = pendingPlanned().length, tot = up.filter(u => (u.p.type || 'expense') === 'expense').reduce((a, u) => a + Number(u.p.amount || 0), 0);
-  return `<div class="col" style="gap:12px">
-    <div class="row between"><span class="section-title">Prossimi pagamenti</span><a href="#pianificati" class="small" style="color:var(--accent)">Gestisci</a></div>
-    ${pend ? `<a href="#pianificati" class="empty" style="color:var(--warn);border-color:var(--warn);padding:12px">${pend} ${pend === 1 ? 'pagamento da confermare' : 'pagamenti da confermare'}</a>` : ''}
-    ${up.length ? `<div class="list">${up.slice(0, 4).map(({ p, d }) => { const c = catById(p.cat); return `<a href="#pianificati" class="item"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color}">${svg(c.icon)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(p.name)}</span><span class="small muted">${dayFmt(d)}</span></div><span class="num" style="font-size:16px;font-weight:600">${plannedIsMissing(p) ? '–' : fmtMoney(p.amount, false)}</span></a>`; }).join('')}</div>
-    <span class="small muted">${up.length > 4 ? `e altri ${up.length - 4} · ` : ''}${fmtMoney(tot)} nei prossimi 30 giorni</span>` : '<div class="empty">Nessun pagamento nei prossimi 30 giorni.</div>'}
-  </div>`;
+  return `${pend ? `<a href="#pianificati" class="empty" style="color:var(--warn);border-color:var(--warn);padding:12px">${pend} ${pend === 1 ? 'pagamento da confermare' : 'pagamenti da confermare'}</a>` : ''}
+    <details><summary><span>Prossimi pagamenti</span><span class="small muted num">${up.length} · ${fmtMoney(tot)}</span></summary>
+    <div class="col" style="gap:10px;padding-bottom:14px">
+    ${up.length ? `<div class="list">${up.slice(0, 6).map(({ p, d }) => { const c = catById(p.cat); return `<a href="#pianificati" class="item"><div class="tile" style="background:${hexA(c.color, .16)};color:${c.color}">${svg(c.icon)}</div><div class="col grow"><span class="truncate" style="font-weight:700">${esc(p.name)}</span><span class="small muted">${dayFmt(d)}</span></div><span class="num" style="font-size:16px;font-weight:600">${plannedIsMissing(p) ? '–' : fmtMoney(p.amount, false)}</span></a>`; }).join('')}</div>` : '<div class="empty">Nessun pagamento nei prossimi 30 giorni.</div>'}
+    <a href="#pianificati" class="small" style="color:var(--accent)">Gestisci i pagamenti pianificati</a></div></details>`;
 }
 
 ANA_WIDGETS.planned = { title: 'Pagamenti pianificati', desc: 'Quanto è già stato pagato e quanto resta da pagare nel periodo, con le prossime scadenze.', icon: 'repeat', render(c) {
@@ -191,4 +190,3 @@ ANA_WIDGETS.planned = { title: 'Pagamenti pianificati', desc: 'Quanto è già st
   </div>`; } };
 
 // Inseriti di default per chi non ha mai personalizzato Analisi.
-ANA_DEFAULT.splice(1, 0, 'planned'); ANA_DEFAULT.splice(4, 0, 'trendline');
